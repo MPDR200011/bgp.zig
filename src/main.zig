@@ -1,5 +1,7 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const net = std.net;
+const headerReader = @import("parsing/header.zig");
 
 pub fn main() !void {
     std.debug.print("Hello World!\n", .{});
@@ -24,34 +26,12 @@ pub fn main() !void {
 
     const buffer: []u8 = try std.heap.page_allocator.alloc(u8, 5);
     defer std.heap.page_allocator.free(buffer);
-    while(true) {
-        const read_bytes = client_reader.readAll(buffer) catch |err| {
-            std.debug.print("unable to read bytes: {}\n", .{err});
-            break;
-        };
 
-        std.log.info("Read {} bytes", .{read_bytes});
+    const message_header = try headerReader.readHeader(client_reader);
 
-        if (read_bytes == 0) {
-            client_writer.writeByte(1) catch |err| {
-                switch (err) {
-                    error.BrokenPipe => {
-                        std.log.info("Connection closed, terminating loop...", .{});
-                        break;
-                    },
-                    else => {return err;}
-                }
-            };
-            continue;
-        }
+    std.debug.print("Received header: msg length = {d}, msg type {s}", .{ message_header.messageLength, @tagName(message_header.messageType) });
 
-        const valid_bytes = buffer[0..read_bytes];
-
-        std.log.info("Received message: \"{}\"", .{std.zig.fmtEscapes(valid_bytes)});
-
-        client_writer.writeAll(valid_bytes) catch |err| {
-            std.debug.print("unable to write bytes: {}\n", .{err});
-            break;
-        };
-    }
+    client_writer.writeAll("ACK") catch |err| {
+        std.debug.print("unable to write bytes: {}\n", .{err});
+    };
 }
