@@ -20,10 +20,16 @@ fn setupTests(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = b.resolveTargetQuery(test_target),
         });
+        const unit_tests_2 = b.addTest(.{
+            .root_source_file = b.path("src/parsing/header.zig"),
+            .target = b.resolveTargetQuery(test_target),
+        });
 
         const run_unit_tests = b.addRunArtifact(unit_tests);
+        const run_unit_tests_2 = b.addRunArtifact(unit_tests_2);
         run_unit_tests.skip_foreign_checks = true;
         test_step.dependOn(&run_unit_tests.step);
+        test_step.dependOn(&run_unit_tests_2.step);
     }
 }
 

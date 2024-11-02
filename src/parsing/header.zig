@@ -1,10 +1,11 @@
 const std = @import("std");
 
-const HeaderParsingError = error {
-    InvalidMarker,
-    MessageLengthTooShort,
-    UnrecognisedMessageType
-};
+const HEADER_LENGTH = 19;
+const MARKER_LENGTH = 16;
+const MSG_LENGTH_POS = 16;
+const MSG_TYPE_POS = 18;
+
+const HeaderParsingError = error{ InvalidMarker, MessageLengthTooShort, UnrecognisedMessageType };
 
 const BgpMessageType = enum(u8) {
     // 1 - OPEN
@@ -14,24 +15,15 @@ const BgpMessageType = enum(u8) {
     // 3 - NOTIFICATION
     NOTIFICATION = 3,
     // 4 - KEEPALIVE
-    KEEPALIVE = 4
+    KEEPALIVE = 4,
 };
 
-const BgpMessageHeader = struct {
-    messageLength: u16,
-    messageType: BgpMessageType
-};
+const BgpMessageHeader = struct { messageLength: u16, messageType: BgpMessageType };
 
 pub fn readHeader(r: anytype) !BgpMessageHeader {
-    const HEADER_LENGTH = 19;
-    const MARKER_LENGTH = 16;
-    const MSG_LENGTH_POS = 16;
-    const MSG_TYPE_POS = 18;
 
     var header_buffer: [HEADER_LENGTH]u8 = undefined;
     const read_bytes = try r.readAll(&header_buffer);
-    std.debug.print("Read {d} bytes\n", .{read_bytes});
-    std.debug.print("Marger: {x}\n", .{header_buffer[0..MARKER_LENGTH]});
 
     if (read_bytes != HEADER_LENGTH) {
         return error.EndOfStream;
@@ -51,20 +43,17 @@ pub fn readHeader(r: anytype) !BgpMessageHeader {
 
     const message_type = std.mem.readInt(u8, header_buffer[MSG_TYPE_POS..], .big);
 
-    return BgpMessageHeader{
-        .messageLength = message_length,
-        .messageType = switch (message_type) {
-            1 => BgpMessageType.OPEN,
-            2 => BgpMessageType.UPDATE,
-            3 => BgpMessageType.NOTIFICATION,
-            4 => BgpMessageType.KEEPALIVE,
-            else => return HeaderParsingError.UnrecognisedMessageType
-        }
-    };
+    return .{ .messageLength = message_length, .messageType = switch (message_type) {
+        1 => BgpMessageType.OPEN,
+        2 => BgpMessageType.UPDATE,
+        3 => BgpMessageType.NOTIFICATION,
+        4 => BgpMessageType.KEEPALIVE,
+        else => return HeaderParsingError.UnrecognisedMessageType,
+    } };
 }
 
-test "Message Header Parser" {
+test "eos error" {
     const testing = std.testing;
-    
-    testing.expectError(error.EndOfStream, readHeader(std.io.fixedBufferStream({}).reader()));
+
+    try testing.expectError(error.EndOfStream, readHeader(std.io.fixedBufferStream({}).reader()));
 }
