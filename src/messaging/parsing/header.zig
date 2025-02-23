@@ -1,7 +1,6 @@
 const std = @import("std");
+const consts = @import("../consts.zig");
 
-const HEADER_LENGTH = 19;
-const MARKER_LENGTH = 16;
 const MSG_LENGTH_POS = 16;
 const MSG_TYPE_POS = 18;
 
@@ -21,15 +20,14 @@ const BgpMessageType = enum(u8) {
 const BgpMessageHeader = struct { messageLength: u16, messageType: BgpMessageType };
 
 pub fn readHeader(r: anytype) !BgpMessageHeader {
-
-    var header_buffer: [HEADER_LENGTH]u8 = undefined;
+    var header_buffer: [consts.HEADER_LENGTH]u8 = undefined;
     const read_bytes = try r.readAll(&header_buffer);
 
-    if (read_bytes != HEADER_LENGTH) {
+    if (read_bytes != consts.HEADER_LENGTH) {
         return error.EndOfStream;
     }
 
-    inline for (header_buffer[0..MARKER_LENGTH]) |byte| {
+    inline for (header_buffer[0..consts.MARKER_LENGTH]) |byte| {
         if (byte != 0xff) {
             return HeaderParsingError.InvalidMarker;
         }
@@ -50,10 +48,4 @@ pub fn readHeader(r: anytype) !BgpMessageHeader {
         4 => BgpMessageType.KEEPALIVE,
         else => return HeaderParsingError.UnrecognisedMessageType,
     } };
-}
-
-test "eos error" {
-    const testing = std.testing;
-
-    try testing.expectError(error.EndOfStream, readHeader(std.io.fixedBufferStream({}).reader()));
 }

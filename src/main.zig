@@ -1,22 +1,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const net = std.net;
-const headerReader = @import("parsing/header.zig");
-const openReader = @import("parsing/open.zig");
+const model = @import("messaging/model.zig");
+const headerReader = @import("messaging/parsing/header.zig");
+const openReader = @import("messaging/parsing/open.zig");
+const bgpEncoding = @import("messaging/encoding/encoder.zig");
 
 pub fn main() !void {
     std.debug.print("Hello World!\n", .{});
-
-
-    // zig fmt: off
-    var stream = std.io.fixedBufferStream(&[_]u8{
-        0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff,
-        0x00, 0x13, 0x01 
-    });
-    _ = try headerReader.readHeader(stream.reader());
 
     const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, 8000);
 
@@ -33,23 +24,23 @@ pub fn main() !void {
 
     std.log.info("Connection received: {s}", .{address_stream.getWritten()});
 
-    const client_reader = client.stream.reader();
-    const client_writer = client.stream.writer();
+    const client_reader = client.stream.reader().any();
+    const client_writer = client.stream.writer().any();
 
-    const buffer: []u8 = try std.heap.page_allocator.alloc(u8, 5);
-    defer std.heap.page_allocator.free(buffer);
+    const messageEncoder = bgpEncoding.MessageEncoder.init();
+    defer messageEncoder.deinit();
+
+    try messageEncoder.writeMessage(model.BgpMessage{ .OPEN = .{ .version = 4, .asNumber = 64000, .peerRouterId = 1, .holdTime = 60, .parameters = null } }, client_writer);
+    std.debug.print("Wrote message to peer.", .{});
 
     const messageHeader = try headerReader.readHeader(client_reader);
-
     std.debug.print("Received header: msg length = {d}, msg type {s}", .{ messageHeader.messageLength, @tagName(messageHeader.messageType) });
-
     switch (messageHeader.messageType) {
-        .OPEN => openReader.readOpenMessage(client_reader),
+        .OPEN => _ = try openReader.readOpenMessage(client_reader),
         else => {
             std.process.exit(1);
-        }
+        },
     }
-
 
     client_writer.writeAll("ACK") catch |err| {
         std.debug.print("unable to write bytes: {}\n", .{err});
