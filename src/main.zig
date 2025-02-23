@@ -37,6 +37,7 @@ pub fn main() !void {
     std.debug.print("Received header: msg length = {d}, msg type {s}", .{ messageHeader.messageLength, @tagName(messageHeader.messageType) });
     switch (messageHeader.messageType) {
         .OPEN => _ = try openReader.readOpenMessage(client_reader),
+        .KEEPALIVE => {},
         else => {
             std.process.exit(1);
         },

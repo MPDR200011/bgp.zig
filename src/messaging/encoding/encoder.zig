@@ -15,15 +15,21 @@ pub const MessageEncoder = struct {
     pub fn deinit() void {}
 
     pub fn writeMessage(comptime _: MessageEncoder, msg: model.BgpMessage, messageWriter: std.io.AnyWriter) !void {
+        if (msg == .KEEPALIVE) {
+            try messageHeader.writeHeader(messageWriter, 0, .KEEPALIVE);
+            return;
+        }
+
         var bodyBuffer = std.ArrayList(u8).init(std.heap.page_allocator);
         defer bodyBuffer.deinit();
 
         const bodyWriter = bodyBuffer.writer().any();
 
         switch (msg) {
-            .OPEN => {
-                try openMessage.writeOpenBody(msg.OPEN, bodyWriter);
+            .OPEN => |openMsg| {
+                try openMessage.writeOpenBody(openMsg, bodyWriter);
             },
+            .KEEPALIVE => {},
             else => return EncodingError.UnsupportedMsgType,
         }
 
