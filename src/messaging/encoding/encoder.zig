@@ -8,13 +8,15 @@ const EncodingError = error{
 };
 
 pub const MessageEncoder = struct {
+    const Self = @This();
+
     pub fn init() MessageEncoder {
         return .{};
     }
 
-    pub fn deinit() void {}
+    pub fn deinit(_: Self) void {}
 
-    pub fn writeMessage(comptime _: MessageEncoder, msg: model.BgpMessage, messageWriter: std.io.AnyWriter) !void {
+    pub fn writeMessage(_: Self, msg: model.BgpMessage, messageWriter: std.io.AnyWriter) !void {
         if (msg == .KEEPALIVE) {
             try messageHeader.writeHeader(messageWriter, 0, .KEEPALIVE);
             return;
