@@ -7,7 +7,8 @@ const openReader = @import("messaging/parsing/open.zig");
 const bgpEncoding = @import("messaging/encoding/encoder.zig");
 
 pub fn main() !void {
-    std.debug.print("Hello World!\n", .{});
+    std.log.info("Hello World!", .{});
+    std.log.info("Initializing BGP Listener", .{});
 
     const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, 8000);
 
@@ -31,10 +32,8 @@ pub fn main() !void {
     defer messageEncoder.deinit();
 
     try messageEncoder.writeMessage(model.BgpMessage{ .OPEN = .{ .version = 4, .asNumber = 64000, .peerRouterId = 1, .holdTime = 60, .parameters = null } }, client_writer);
-    std.debug.print("Wrote message to peer.", .{});
 
     const messageHeader = try headerReader.readHeader(client_reader);
-    std.debug.print("Received header: msg length = {d}, msg type {s}", .{ messageHeader.messageLength, @tagName(messageHeader.messageType) });
     switch (messageHeader.messageType) {
         .OPEN => _ = try openReader.readOpenMessage(client_reader),
         .KEEPALIVE => {},
