@@ -33,21 +33,44 @@ fn setupTests(b: *std.Build) void {
     }
 }
 
-fn setupExe(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+const SetupModule = struct  {
+    name: []const u8,
+    mod: *std.Build.Module
+};
 
-    const exe = b.addExecutable(.{ .name = "hello", .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize });
+fn setupExe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, modules: []const SetupModule, name: []const u8, root_file_path: []const u8, cmd: []const u8, desc: []const u8) void {
+    const exe = b.addExecutable(.{ .name = name, .root_source_file = b.path(root_file_path), .target = target, .optimize = optimize });
+    for (modules) |mod| {
+        exe.root_module.addImport(mod.name, mod.mod);
+    }
 
     b.installArtifact(exe);
 
     const run_exe = b.addRunArtifact(exe);
 
-    const run_step = b.step("run", "Run the application");
+    const run_step = b.step(cmd, desc);
     run_step.dependOn(&run_exe.step);
 }
 
+fn setupModule(b: *std.Build, name: []const u8, root_source_file: []const u8) SetupModule {
+    return .{
+        .name=name,
+        .mod=b.addModule(name, .{
+            .root_source_file = b.path(root_source_file)
+        })
+    };
+}
+
 pub fn build(b: *std.Build) void {
-    setupExe(b);
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const modules = [_]SetupModule{
+        setupModule(b, "scheduled_task", "src/utils/scheduled_task.zig"),
+    };
+
+    setupExe(b, target, optimize, &modules, "zig-bgp", "src/main.zig", "run", "Run bgp-zig");
+    setupExe(b, target, optimize, &modules, "scheduled_task", "example_exes/test_scheduled_task.zig", "test_sched_task", "Run Scheduled Task Tests");
+
     setupTests(b);
 }
