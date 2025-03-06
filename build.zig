@@ -52,7 +52,14 @@ fn setupExe(
     modules: []const SetupModule,
     spec: *const ExeSpec
 ) void {
-    const exe = b.addExecutable(.{ .name = spec.name, .root_source_file = b.path(spec.root_source_file), .target = target, .optimize = optimize });
+    const exe = b.addExecutable(.{
+        .name = spec.name,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(spec.root_source_file),
+            .target = target,
+            .optimize = optimize
+        }),
+    });
     for (modules) |mod| {
         exe.root_module.addImport(mod.name, mod.mod);
     }
