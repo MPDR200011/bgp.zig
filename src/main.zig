@@ -1,34 +1,40 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const net = std.net;
+const posix = std.posix;
+const Allocator = std.mem.Allocator;
+
 const model = @import("messaging/model.zig");
 const headerReader = @import("messaging/parsing/header.zig");
 const openReader = @import("messaging/parsing/open.zig");
 const bgpEncoding = @import("messaging/encoding/encoder.zig");
 
-pub fn main() !void {
-    std.log.info("Hello World!", .{});
-    std.log.info("Initializing BGP Listener", .{});
+pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]const u8 {
+    var addressBuffer: [32]u8 = undefined;
+    var addressStream = std.io.fixedBufferStream(&addressBuffer);
+    const addressWriter = addressStream.writer();
+    try address.format("", .{}, addressWriter);
 
-    const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, 8000);
+    const newBuffer: []u8 = try allocator.alloc(u8, addressStream.getPos() catch unreachable);
+    std.mem.copyForwards(u8, newBuffer, addressStream.getWritten());
+    return newBuffer;
+}
 
-    var server = try addr.listen(.{});
+pub fn connectionHandler(conn: net.Server.Connection, allocator: Allocator) !void {
+    defer conn.stream.close();
 
-    const client = try server.accept();
-    defer client.stream.close();
+    // const peer_addr = conn.address;
 
-    const address_buffer: []u8 = try std.heap.page_allocator.alloc(u8, 16 + 16);
-    defer std.heap.page_allocator.free(address_buffer);
-    var address_stream = std.io.fixedBufferStream(address_buffer);
-    const address_writer = address_stream.writer();
-    try client.address.format("", .{}, address_writer);
+    var local_addr: net.Address = undefined;
+    var addr_len: posix.socklen_t = @sizeOf(net.Address);
+    posix.getsockname(conn.stream.handle, &local_addr.any, &addr_len) catch |err| {
+        std.log.err("Error getting local address for connection : {s}", .{@errorName(err)});
+    };
 
-    std.log.info("Connection received: {s}", .{address_stream.getWritten()});
+    const client_reader = conn.stream.reader().any();
+    const client_writer = conn.stream.writer().any();
 
-    const client_reader = client.stream.reader().any();
-    const client_writer = client.stream.writer().any();
-
-    const messageEncoder = bgpEncoding.MessageEncoder.init();
+    var messageEncoder = bgpEncoding.MessageEncoder.init(allocator);
     defer messageEncoder.deinit();
 
     try messageEncoder.writeMessage(model.BgpMessage{ .OPEN = .{ .version = 4, .asNumber = 64000, .peerRouterId = 1, .holdTime = 60, .parameters = null } }, client_writer);
@@ -38,11 +44,49 @@ pub fn main() !void {
         .OPEN => _ = try openReader.readOpenMessage(client_reader),
         .KEEPALIVE => {},
         else => {
-            std.process.exit(1);
+            return;
         },
     }
 
     client_writer.writeAll("ACK") catch |err| {
         std.debug.print("unable to write bytes: {}\n", .{err});
     };
+}
+
+
+pub fn main() !void {
+    std.log.info("Hello World!", .{});
+    std.log.info("Initializing BGP Listener", .{});
+
+    // Initializing GPA for the process
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    const gpa, const is_debug = gpa: {
+        if (builtin.os.tag == .wasi) {
+            break :gpa .{ std.heap.wasm_allocator, false };
+        }
+
+        break :gpa switch (builtin.mode) {
+            .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
+            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
+        };
+    };
+    defer if (is_debug) {
+        _ = debug_allocator.deinit();
+    };
+
+    const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, 179);
+
+    std.log.info("Listening on port 179", .{});
+    var server = try addr.listen(.{});
+
+    const client = try server.accept();
+
+    const peerAddrStr = try getAddrString(client.address, gpa);
+    defer gpa.free(peerAddrStr);
+
+    std.log.info("Connection received from {s}", .{peerAddrStr});
+
+    var connectionThread = try std.Thread.spawn(.{}, connectionHandler, .{client, gpa});
+
+    connectionThread.join();
 }
