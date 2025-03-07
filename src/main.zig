@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const net = std.net;
 const posix = std.posix;
 const Allocator = std.mem.Allocator;
+const fsm = @import("sessions/fsm.zig");
 
 const model = @import("messaging/model.zig");
 const headerReader = @import("messaging/parsing/header.zig");
@@ -21,6 +22,8 @@ pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]cons
 }
 
 pub fn connectionHandler(conn: net.Server.Connection, allocator: Allocator) !void {
+    _  = allocator;
+
     defer conn.stream.close();
 
     // const peer_addr = conn.address;
@@ -31,30 +34,33 @@ pub fn connectionHandler(conn: net.Server.Connection, allocator: Allocator) !voi
         std.log.err("Error getting local address for connection : {s}", .{@errorName(err)});
     };
 
+    // TODO: get the configured peer, close connection if the peer is not configured
+
     const client_reader = conn.stream.reader().any();
-    const client_writer = conn.stream.writer().any();
 
-    var messageEncoder = bgpEncoding.MessageEncoder.init(allocator);
-    defer messageEncoder.deinit();
+    while (true) {
+        const messageHeader = try headerReader.readHeader(client_reader);
+        const message: model.BgpMessage = switch (messageHeader.messageType) {
+            .OPEN => _ = try openReader.readOpenMessage(client_reader),
+            .KEEPALIVE => {},
+            else => {
+                return;
+            },
+        };
 
-    try messageEncoder.writeMessage(model.BgpMessage{ .OPEN = .{ .version = 4, .asNumber = 64000, .peerRouterId = 1, .holdTime = 60, .parameters = null } }, client_writer);
+        const event: fsm.Event = switch(message) {
+            .OPEN => |openMessage| .{.OpenReceived = openMessage},
+            else => return,
+        };
 
-    const messageHeader = try headerReader.readHeader(client_reader);
-    switch (messageHeader.messageType) {
-        .OPEN => _ = try openReader.readOpenMessage(client_reader),
-        .KEEPALIVE => {},
-        else => {
-            return;
-        },
+        _ = event;
+
+        // TODO: Pass event to the FSM
     }
-
-    client_writer.writeAll("ACK") catch |err| {
-        std.debug.print("unable to write bytes: {}\n", .{err});
-    };
 }
 
 
-pub fn main() !void {
+pub fn min() !void {
     std.log.info("Hello World!", .{});
     std.log.info("Initializing BGP Listener", .{});
 
@@ -73,6 +79,11 @@ pub fn main() !void {
     defer if (is_debug) {
         _ = debug_allocator.deinit();
     };
+
+    // TODO: Initialize Peers:
+    //      - Src - Dst addresses
+    //      - Session objects
+    //      - FSMs
 
     const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, 179);
 

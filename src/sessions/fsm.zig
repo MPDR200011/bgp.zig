@@ -1,17 +1,20 @@
 const std = @import("std");
 const session_lib = @import("session.zig");
+const messageModel = @import("../messaging/model.zig");
 const Session = session_lib.Session;
 const Mode = session_lib.Mode;
 const SessionState = session_lib.SessionState;
 
 const EventTag = enum(u8) {
-    Start       = 1,
-    Stop        = 2,
+    Start           = 1,
+    Stop            = 2,
+    OpenReceived    = 3,
 };
 
 const Event = union(EventTag) {
     Start: void,
     Stop: void,
+    OpenReceived: messageModel.OpenMessage,
 };
 
 const PostHandlerActionTag = enum(u8) {
