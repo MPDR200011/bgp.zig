@@ -60,7 +60,7 @@ pub fn connectionHandler(conn: net.Server.Connection, allocator: Allocator) !voi
 }
 
 
-pub fn min() !void {
+pub fn main() !void {
     std.log.info("Hello World!", .{});
     std.log.info("Initializing BGP Listener", .{});
 
