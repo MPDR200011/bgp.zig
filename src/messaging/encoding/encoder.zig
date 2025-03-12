@@ -14,7 +14,7 @@ pub const MessageEncoder = struct {
     const Self = @This();
 
     pub fn init(allocator: Allocator) MessageEncoder {
-        return .{.allocator = allocator};
+        return .{ .allocator = allocator };
     }
 
     pub fn deinit(_: Self) void {}

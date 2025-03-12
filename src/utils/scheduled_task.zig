@@ -1,11 +1,11 @@
 const std = @import("std");
 
-const TaskErrors = error {
+const TaskErrors = error{
     AlreadyRunning,
 };
 
 pub const ScheduledTask = struct {
-    task: *const fn()void,
+    task: *const fn () void,
     delay_ms: u64,
 
     mutex: std.Thread.Mutex,
@@ -19,15 +19,15 @@ pub const ScheduledTask = struct {
 
     const Self = @This();
 
-    pub fn init(delay_ms: u64, task: *const fn()void) Self {
+    pub fn init(delay_ms: u64, task: *const fn () void) Self {
         return .{
-            .task=task,
-            .delay_ms=delay_ms,
-            .shouldRun=true,
-            .finishedRunning=false,
-            .executorRunning=false,
-            .mutex=.{},
-            .waitCondition=.{},
+            .task = task,
+            .delay_ms = delay_ms,
+            .shouldRun = true,
+            .finishedRunning = false,
+            .executorRunning = false,
+            .mutex = .{},
+            .waitCondition = .{},
         };
     }
 
@@ -53,11 +53,11 @@ pub const ScheduledTask = struct {
         {
             self.mutex.lock();
             defer self.mutex.unlock();
-            
+
             if (self.executorRunning) {
                 return TaskErrors.AlreadyRunning;
             }
-            
+
             self.executorRunning = true;
             self.shouldRun = true;
             self.finishedRunning = false;
@@ -70,7 +70,7 @@ pub const ScheduledTask = struct {
         {
             self.mutex.lock();
             defer self.mutex.unlock();
-            
+
             if (self.finishedRunning) {
                 return;
             }

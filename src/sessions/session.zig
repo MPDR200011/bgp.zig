@@ -1,17 +1,17 @@
 const std = @import("std");
 
 pub const SessionState = enum(u8) {
-    IDLE            = 1,
-    CONNECT         = 2,
-    ACTIVE          = 3,
-    OPEN_SENT       = 4,
-    OPEN_CONFIRM    = 5,
-    ESTABLISHED     = 6,
+    IDLE = 1,
+    CONNECT = 2,
+    ACTIVE = 3,
+    OPEN_SENT = 4,
+    OPEN_CONFIRM = 5,
+    ESTABLISHED = 6,
 };
 
 pub const Mode = enum(u8) {
-    PASSIVE     = 1,
-    ACTIVE      = 2,
+    PASSIVE = 1,
+    ACTIVE = 2,
 };
 
 pub const Session = struct {
@@ -32,11 +32,9 @@ pub const Session = struct {
             .state = .IDLE,
             .mode = mode,
             .mutex = .{},
-            .connectionRetryTimer={},
-            .holdTimer= {},
-            .keepAliveTimer= {},
+            .connectionRetryTimer = {},
+            .holdTimer = {},
+            .keepAliveTimer = {},
         };
     }
-
 };
-
