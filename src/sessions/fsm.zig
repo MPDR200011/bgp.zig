@@ -11,7 +11,7 @@ const EventTag = enum(u8) {
     OpenReceived    = 3,
 };
 
-const Event = union(EventTag) {
+pub const Event = union(EventTag) {
     Start: void,
     Stop: void,
     OpenReceived: messageModel.OpenMessage,
