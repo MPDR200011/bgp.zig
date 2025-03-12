@@ -32,6 +32,9 @@ pub const Session = struct {
             .state = .IDLE,
             .mode = mode,
             .mutex = .{},
+            .connectionRetryTimer={},
+            .holdTimer= {},
+            .keepAliveTimer= {},
         };
     }
 
