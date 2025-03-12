@@ -57,26 +57,15 @@ const EventHandler = struct {
 };
 
 const IdleStateEventHandler = struct {
-    session: *Session,
+    fn handleStart(session: *Session) !PostHandlerAction {
+        session.mutex.lock();
+        defer session.mutex.unlock();
 
-    const Self = @This();
-    const State: SessionState = .IDLE;
-
-    pub fn init(session: *Session) Self {
-        return .{
-            .session = session
-        };
-    }
-
-    fn handleStart(self: *Self) !PostHandlerAction {
-        self.session.mutex.lock();
-        defer self.session.mutex.unlock();
-
-        if (self.session.mode == .PASSIVE) {
+        if (session.mode == .PASSIVE) {
             // TODO: Setup resources:
             //   - Open socket
             //   - Set Connection retry timer
-            self.session.connectionRetryCount = 0;
+            session.connectionRetryCount = 0;
             return .{
                 .Transition = .ACTIVE,
             };
@@ -89,15 +78,11 @@ const IdleStateEventHandler = struct {
         };
     }
 
-    fn handleEvent(self: *Self, event: Event) !PostHandlerAction {
+    fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
         switch (event) {
-            .Start => try self.handleStart(),
-            else => return,
+            .Start => return try handleStart(session),
+            else => return .{ .KEEP },
         }
-    }
-
-    fn eventHandler(self: *Self) EventHandler {
-        return .init(self);
     }
 };
 
@@ -107,17 +92,11 @@ pub const SessionFSM = struct {
     mutex: std.Thread.Mutex,
 
     session: *Session,
-    currentEventHandler: *EventHandler,
-
-    idleStateEventHandler: IdleStateEventHandler,
 
     pub fn init(session: *Session) Self {
-        const idleEH: IdleStateEventHandler = .{.session = session};
         return .{
             .mutex = .{},
             .session = session,
-            .currentEventHandler = &idleEH,
-            .idleEventHandler = idleEH,
         };
     }
 
@@ -136,7 +115,10 @@ pub const SessionFSM = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        const nextAction = try self.currentEventHandler.handleEvent(event);
+        const nextAction: PostHandlerAction = switch (self.session.state) {
+            .IDLE => try IdleStateEventHandler.handleEvent(self.session, event),
+            else => .{.Keep}
+        };
 
         switch (nextAction) {
             .Transition => |nextState| try self.switchState(nextState),
