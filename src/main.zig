@@ -95,7 +95,7 @@ pub fn connectionHandler(conn: net.Server.Connection, peerMap: *PeerMap, allocat
         };
 
         peer.sessionFSM.handleEvent(event) catch |err| {
-            std.log.err("Error handling event in peer FSM: {}", .{err});
+            std.log.err("Error handling event {}: {}", .{@tagName(event), err});
         };
 
         // TODO: Pass event to the FSM
