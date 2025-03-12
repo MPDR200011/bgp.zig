@@ -12,9 +12,11 @@ on:
 jobs:
   build:
     name: Build the project
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: korandoru/setup-zig@v1
         with:
           zig-version: 0.14.0
+          target-platform: x86_64-linux
       - run: zig build
