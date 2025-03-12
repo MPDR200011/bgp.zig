@@ -23,7 +23,6 @@ pub fn main() !void {
     var currentT = std.time.milliTimestamp();
     std.debug.print("{} - Task finished\n", .{currentT - start});
 
-
     // Canceled
     start = std.time.milliTimestamp();
     std.debug.print("Starting the task!\n", .{});
@@ -47,5 +46,4 @@ pub fn main() !void {
     task.join();
     currentT = std.time.milliTimestamp();
     std.debug.print("{} - Task finished\n", .{currentT - start});
-
 }

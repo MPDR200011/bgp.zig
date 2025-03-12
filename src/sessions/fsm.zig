@@ -6,20 +6,20 @@ const Mode = session_lib.Mode;
 const SessionState = session_lib.SessionState;
 
 const EventTag = enum(u8) {
-    Start           = 1,
-    Stop            = 2,
-    OpenReceived    = 3,
+    Start = 1,
+    Stop = 2,
+    OpenReceived = 3,
 };
 
-const Event = union(EventTag) {
+pub const Event = union(EventTag) {
     Start: void,
     Stop: void,
     OpenReceived: messageModel.OpenMessage,
 };
 
 const PostHandlerActionTag = enum(u8) {
-    Keep        = 1,
-    Transition  = 2,
+    Keep = 1,
+    Transition = 2,
 };
 
 const PostHandlerAction = union(PostHandlerActionTag) {
@@ -29,54 +29,43 @@ const PostHandlerAction = union(PostHandlerActionTag) {
 
 // Event handler interface
 const EventHandler = struct {
-  ptr: *anyopaque,
-  handleFunc: *const fn (ptr: *anyopaque, event: Event) anyerror!PostHandlerAction,
-
-  const Self = @This();
-
-  fn init(ptr: anytype) Self {
-    const T = @TypeOf(ptr);
-    const ptr_info = @typeInfo(T);
-
-    const gen = struct {
-      pub fn handleEvent(pointer: *anyopaque, event: Event) anyerror!PostHandlerAction {
-        const self: T = @ptrCast(@alignCast(pointer));
-        return ptr_info.Pointer.child.handleEvent(self, event);
-      }
-    };
-
-    return .{
-      .ptr = ptr,
-      .handleFunc = gen.handleEvent,
-    };
-  }
-
-  pub fn handleEvent(self: Self, event: Event) !PostHandlerAction {
-    return self.handleFunc(self.ptr, event);
-  }
-};
-
-const IdleStateEventHandler = struct {
-    session: *Session,
+    ptr: *anyopaque,
+    handleFunc: *const fn (ptr: *anyopaque, event: Event) anyerror!PostHandlerAction,
 
     const Self = @This();
-    const State: SessionState = .IDLE;
 
-    pub fn init(session: *Session) Self {
+    fn init(ptr: anytype) Self {
+        const T = @TypeOf(ptr);
+        const ptr_info = @typeInfo(T);
+
+        const gen = struct {
+            pub fn handleEvent(pointer: *anyopaque, event: Event) anyerror!PostHandlerAction {
+                const self: T = @ptrCast(@alignCast(pointer));
+                return ptr_info.Pointer.child.handleEvent(self, event);
+            }
+        };
+
         return .{
-            .session = session
+            .ptr = ptr,
+            .handleFunc = gen.handleEvent,
         };
     }
 
-    fn handleStart(self: *Self) !PostHandlerAction {
-        self.session.mutex.lock();
-        defer self.session.mutex.unlock();
+    pub fn handleEvent(self: Self, event: Event) !PostHandlerAction {
+        return self.handleFunc(self.ptr, event);
+    }
+};
 
-        if (self.session.mode == .PASSIVE) {
+const IdleStateEventHandler = struct {
+    fn handleStart(session: *Session) !PostHandlerAction {
+        session.mutex.lock();
+        defer session.mutex.unlock();
+
+        if (session.mode == .PASSIVE) {
             // TODO: Setup resources:
             //   - Open socket
             //   - Set Connection retry timer
-            self.session.connectionRetryCount = 0;
+            session.connectionRetryCount = 0;
             return .{
                 .Transition = .ACTIVE,
             };
@@ -84,20 +73,14 @@ const IdleStateEventHandler = struct {
 
         // Start Connection Thread
 
-        return .{
-            .Transition = .CONNECT
-        };
+        return .{ .Transition = .CONNECT };
     }
 
-    fn handleEvent(self: *Self, event: Event) !PostHandlerAction {
+    fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
         switch (event) {
-            .Start => try self.handleStart(),
-            else => return,
+            .Start => return try handleStart(session),
+            else => return .{ .Keep = {} },
         }
-    }
-
-    fn eventHandler(self: *Self) EventHandler {
-        return .init(self);
     }
 };
 
@@ -107,17 +90,11 @@ pub const SessionFSM = struct {
     mutex: std.Thread.Mutex,
 
     session: *Session,
-    currentEventHandler: *EventHandler,
-
-    idleStateEventHandler: IdleStateEventHandler,
 
     pub fn init(session: *Session) Self {
-        const idleEH: IdleStateEventHandler = .{.session = session};
         return .{
             .mutex = .{},
             .session = session,
-            .currentEventHandler = &idleEH,
-            .idleEventHandler = idleEH,
         };
     }
 
@@ -136,7 +113,10 @@ pub const SessionFSM = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        const nextAction = try self.currentEventHandler.handleEvent(event);
+        const nextAction: PostHandlerAction = switch (self.session.state) {
+            .IDLE => try IdleStateEventHandler.handleEvent(self.session, event),
+            else => .{ .Keep = {} },
+        };
 
         switch (nextAction) {
             .Transition => |nextState| try self.switchState(nextState),
