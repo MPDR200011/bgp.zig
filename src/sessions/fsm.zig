@@ -6,9 +6,9 @@ const Mode = session_lib.Mode;
 const SessionState = session_lib.SessionState;
 
 const EventTag = enum(u8) {
-    Start           = 1,
-    Stop            = 2,
-    OpenReceived    = 3,
+    Start = 1,
+    Stop = 2,
+    OpenReceived = 3,
 };
 
 pub const Event = union(EventTag) {
@@ -18,8 +18,8 @@ pub const Event = union(EventTag) {
 };
 
 const PostHandlerActionTag = enum(u8) {
-    Keep        = 1,
-    Transition  = 2,
+    Keep = 1,
+    Transition = 2,
 };
 
 const PostHandlerAction = union(PostHandlerActionTag) {
@@ -29,31 +29,31 @@ const PostHandlerAction = union(PostHandlerActionTag) {
 
 // Event handler interface
 const EventHandler = struct {
-  ptr: *anyopaque,
-  handleFunc: *const fn (ptr: *anyopaque, event: Event) anyerror!PostHandlerAction,
+    ptr: *anyopaque,
+    handleFunc: *const fn (ptr: *anyopaque, event: Event) anyerror!PostHandlerAction,
 
-  const Self = @This();
+    const Self = @This();
 
-  fn init(ptr: anytype) Self {
-    const T = @TypeOf(ptr);
-    const ptr_info = @typeInfo(T);
+    fn init(ptr: anytype) Self {
+        const T = @TypeOf(ptr);
+        const ptr_info = @typeInfo(T);
 
-    const gen = struct {
-      pub fn handleEvent(pointer: *anyopaque, event: Event) anyerror!PostHandlerAction {
-        const self: T = @ptrCast(@alignCast(pointer));
-        return ptr_info.Pointer.child.handleEvent(self, event);
-      }
-    };
+        const gen = struct {
+            pub fn handleEvent(pointer: *anyopaque, event: Event) anyerror!PostHandlerAction {
+                const self: T = @ptrCast(@alignCast(pointer));
+                return ptr_info.Pointer.child.handleEvent(self, event);
+            }
+        };
 
-    return .{
-      .ptr = ptr,
-      .handleFunc = gen.handleEvent,
-    };
-  }
+        return .{
+            .ptr = ptr,
+            .handleFunc = gen.handleEvent,
+        };
+    }
 
-  pub fn handleEvent(self: Self, event: Event) !PostHandlerAction {
-    return self.handleFunc(self.ptr, event);
-  }
+    pub fn handleEvent(self: Self, event: Event) !PostHandlerAction {
+        return self.handleFunc(self.ptr, event);
+    }
 };
 
 const IdleStateEventHandler = struct {
@@ -73,15 +73,13 @@ const IdleStateEventHandler = struct {
 
         // Start Connection Thread
 
-        return .{
-            .Transition = .CONNECT
-        };
+        return .{ .Transition = .CONNECT };
     }
 
     fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
         switch (event) {
             .Start => return try handleStart(session),
-            else => return .{ .KEEP },
+            else => return .{ .Keep = {} },
         }
     }
 };
@@ -117,7 +115,7 @@ pub const SessionFSM = struct {
 
         const nextAction: PostHandlerAction = switch (self.session.state) {
             .IDLE => try IdleStateEventHandler.handleEvent(self.session, event),
-            else => .{.Keep}
+            else => .{ .Keep = {} },
         };
 
         switch (nextAction) {

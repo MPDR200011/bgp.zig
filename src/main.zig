@@ -3,16 +3,16 @@ const builtin = @import("builtin");
 const net = std.net;
 const posix = std.posix;
 const process = std.process;
+
 const Allocator = std.mem.Allocator;
+
 const fsm = @import("sessions/fsm.zig");
 const session = @import("sessions/session.zig");
-
 
 const model = @import("messaging/model.zig");
 const headerReader = @import("messaging/parsing/header.zig");
 const openReader = @import("messaging/parsing/open.zig");
 const bgpEncoding = @import("messaging/encoding/encoder.zig");
-
 
 pub const PeerSessionAddresses = struct {
     localAddress: []const u8,
@@ -37,10 +37,9 @@ pub const Peer = struct {
     sessionFSM: fsm.SessionFSM,
 
     const Self = @This();
-
 };
 
-const PeerMap = std.HashMap(PeerSessionAddresses, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
+pub const PeerMap = std.HashMap(PeerSessionAddresses, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
 
 pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]const u8 {
     var addressBuffer: [32]u8 = undefined;
@@ -68,11 +67,11 @@ pub fn connectionHandler(conn: net.Server.Connection, peerMap: *PeerMap, allocat
     const localAddrStr = try getAddrString(peerAddr, allocator);
     defer allocator.free(localAddrStr);
 
-    _ = peerMap.get(PeerSessionAddresses{
+    var peer = peerMap.get(PeerSessionAddresses{
         .localAddress = localAddrStr,
         .peerAddress = peerAddrStr,
     }) orelse {
-        std.log.info("Received connection request from unconfigured peer localAddr={s} remoteAddr={s}", .{localAddrStr, peerAddrStr});
+        std.log.info("Received connection request from unconfigured peer localAddr={s} remoteAddr={s}", .{ localAddrStr, peerAddrStr });
         return;
     };
 
@@ -83,19 +82,21 @@ pub fn connectionHandler(conn: net.Server.Connection, peerMap: *PeerMap, allocat
     while (true) {
         const messageHeader = try headerReader.readHeader(client_reader);
         const message: model.BgpMessage = switch (messageHeader.messageType) {
-            .OPEN => .{.OPEN = try openReader.readOpenMessage(client_reader)},
-            .KEEPALIVE =>.{.KEEPALIVE = .{}},
+            .OPEN => .{ .OPEN = try openReader.readOpenMessage(client_reader) },
+            .KEEPALIVE => .{ .KEEPALIVE = .{} },
             else => {
                 return;
             },
         };
 
-        const event: fsm.Event = switch(message) {
-            .OPEN => |openMessage| .{.OpenReceived = openMessage},
+        const event: fsm.Event = switch (message) {
+            .OPEN => |openMessage| .{ .OpenReceived = openMessage },
             else => return,
         };
 
-        _ = event;
+        peer.sessionFSM.handleEvent(event) catch |err| {
+            std.log.err("Error handling event in peer FSM: {}", .{err});
+        };
 
         // TODO: Pass event to the FSM
     }
@@ -127,10 +128,6 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
-    // TODO: Initialize Peers:
-    //      - Src - Dst addresses
-    //      - Session objects
-    //      - FSMs
     var env = try process.getEnvMap(gpa);
     defer env.deinit();
 
@@ -177,7 +174,6 @@ pub fn main() !void {
 
     try peerMap.put(peer.sessionAddresses, peer);
 
-
     const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, 179);
 
     std.log.info("Listening on port 179", .{});
@@ -190,7 +186,7 @@ pub fn main() !void {
 
     std.log.info("Connection received from {s}", .{peerAddrStr});
 
-    var connectionThread = try std.Thread.spawn(.{}, connectionHandler, .{client, &peerMap, gpa});
+    var connectionThread = try std.Thread.spawn(.{}, connectionHandler, .{ client, &peerMap, gpa });
 
     connectionThread.join();
 }
