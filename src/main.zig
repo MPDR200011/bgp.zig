@@ -5,6 +5,7 @@ const posix = std.posix;
 const process = std.process;
 const Allocator = std.mem.Allocator;
 const fsm = @import("sessions/fsm.zig");
+const session = @import("sessions/session.zig");
 
 
 const model = @import("messaging/model.zig");
@@ -16,9 +17,6 @@ const bgpEncoding = @import("messaging/encoding/encoder.zig");
 pub const PeerSessionAddresses = struct {
     localAddress: []const u8,
     peerAddress: []const u8,
-
-    const Self = @This();
-
 };
 
 pub const PeerMapCtx = struct {
@@ -35,6 +33,11 @@ pub const PeerMapCtx = struct {
 
 pub const Peer = struct {
     sessionAddresses: PeerSessionAddresses,
+    sessionInfo: session.Session,
+    sessionFSM: fsm.SessionFSM,
+
+    const Self = @This();
+
 };
 
 const PeerMap = std.HashMap(PeerSessionAddresses, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
@@ -133,6 +136,7 @@ pub fn main() !void {
 
     const LOCAL_ADDR_ENV_NAME = "BGP_LOCAL_ADDR";
     const PEER_ADDR_ENV_NAME = "BGP_PEER_ADDR";
+    const MODE_ENV_NAME = "BGP_MODE";
 
     const localAddr = env.get(LOCAL_ADDR_ENV_NAME) orelse {
         std.log.err("Missing local address", .{});
@@ -140,6 +144,15 @@ pub fn main() !void {
     };
     const peerAddr = env.get(PEER_ADDR_ENV_NAME) orelse {
         std.log.err("Missing peer address", .{});
+        process.exit(1);
+    };
+    const modeStr = env.get(MODE_ENV_NAME) orelse {
+        std.log.err("Missing bgp mode", .{});
+        process.exit(1);
+    };
+
+    const mode = std.meta.stringToEnum(session.Mode, modeStr) orelse {
+        std.log.err("Invalid bgp mode {s}", .{modeStr});
         process.exit(1);
     };
 
@@ -157,7 +170,9 @@ pub fn main() !void {
         .sessionAddresses = .{
             .localAddress = localAddr,
             .peerAddress = peerAddr,
-        }
+        },
+        .sessionInfo = .init(mode),
+        .sessionFSM = .init(&peer.sessionInfo),
     };
 
     try peerMap.put(peer.sessionAddresses, peer);
