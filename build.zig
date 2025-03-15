@@ -68,12 +68,12 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const modules = [_]SetupModule{
-        setupModule(b, "scheduled_task", "src/utils/scheduled_task.zig"),
+        setupModule(b, "timer", "src/utils/timer.zig"),
     };
 
     const exes = [_]ExeSpec{
         .{ .name = "zig-bgp", .root_source_file = "src/main.zig", .cmd = "run", .desc = "Run main binary" },
-        .{ .name = "scheduled_task", .root_source_file = "example_exes/test_scheduled_task.zig", .cmd = "test_sched_task", .desc = "Run Scheduled Task Example Binary" },
+        .{ .name = "scheduled_task", .root_source_file = "example_exes/test_timer.zig", .cmd = "test_sched_task", .desc = "Run Scheduled Task Example Binary" },
     };
 
     for (exes) |exeSpec| {
