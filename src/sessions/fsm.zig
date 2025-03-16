@@ -1,20 +1,30 @@
 const std = @import("std");
-const session_lib = @import("session.zig");
+const sessionLib = @import("session.zig");
 const messageModel = @import("../messaging/model.zig");
-const Session = session_lib.Session;
-const Mode = session_lib.Mode;
-const SessionState = session_lib.SessionState;
+const idleHandler = @import("handlers/idle.zig");
+
+const Session = sessionLib.Session;
+const Mode = sessionLib.Mode;
+const SessionState = sessionLib.SessionState;
 
 const EventTag = enum(u8) {
     Start = 1,
     Stop = 2,
     OpenReceived = 3,
+    ConnectionRetryTimerExpired = 4,
+    HoldTimerExpired = 5,
+    KeepAliveTimerExpired = 6,
+    KeepAliveReceived = 7,
 };
 
 pub const Event = union(EventTag) {
     Start: void,
     Stop: void,
     OpenReceived: messageModel.OpenMessage,
+    ConnectionRetryTimerExpired: void,
+    HoldTimerExpired: void,
+    KeepAliveTimerExpired: void,
+    KeepAliveReceived: void,
 };
 
 const PostHandlerActionTag = enum(u8) {
@@ -22,7 +32,7 @@ const PostHandlerActionTag = enum(u8) {
     Transition = 2,
 };
 
-const PostHandlerAction = union(PostHandlerActionTag) {
+pub const PostHandlerAction = union(PostHandlerActionTag) {
     Keep: void,
     Transition: SessionState,
 };
@@ -56,34 +66,6 @@ const EventHandler = struct {
     }
 };
 
-const IdleStateEventHandler = struct {
-    fn handleStart(session: *Session) !PostHandlerAction {
-        session.mutex.lock();
-        defer session.mutex.unlock();
-
-        if (session.mode == .PASSIVE) {
-            // TODO: Setup resources:
-            //   - Open socket
-            //   - Set Connection retry timer
-            session.connectionRetryCount = 0;
-            return .{
-                .Transition = .ACTIVE,
-            };
-        }
-
-        // Start Connection Thread
-
-        return .{ .Transition = .CONNECT };
-    }
-
-    fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
-        switch (event) {
-            .Start => return try handleStart(session),
-            else => return .{ .Keep = {} },
-        }
-    }
-};
-
 pub const SessionFSM = struct {
     const Self = @This();
 
@@ -114,7 +96,7 @@ pub const SessionFSM = struct {
         defer self.mutex.unlock();
 
         const nextAction: PostHandlerAction = switch (self.session.state) {
-            .IDLE => try IdleStateEventHandler.handleEvent(self.session, event),
+            .IDLE => try idleHandler.handleEvent(self.session, event),
             else => .{ .Keep = {} },
         };
 

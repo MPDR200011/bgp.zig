@@ -2,6 +2,7 @@ const std = @import("std");
 
 const TaskErrors = error{
     AlreadyRunning,
+    InvalidDelay
 };
 
 pub fn Timer(Context: type) type {
@@ -23,11 +24,11 @@ pub fn Timer(Context: type) type {
 
         executorThread: ?std.Thread = null,
 
-        pub fn init(delay_ms: u64, cb: Callback, ctx: Context) Self {
+        pub fn init(cb: Callback, ctx: Context) Self {
             return .{
                 .cb = cb,
                 .ctx = ctx,
-                .delay_ms = delay_ms,
+                .delay_ms = 0,
                 .shouldRun = true,
                 .finishedRunning = false,
                 .executorRunning = false,
@@ -47,18 +48,23 @@ pub fn Timer(Context: type) type {
             };
 
             if (self.shouldRun) {
-                @call(.always_inline, self.cp, .{self.ctx});
-                self.cp();
+                @call(.auto, self.cb, .{self.ctx});
             }
 
             self.finishedRunning = true;
             self.executorRunning = false;
         }
 
-        pub fn start(self: *Self) !void {
+        pub fn start(self: *Self, delay_ms: u64) !void {
             {
                 self.mutex.lock();
                 defer self.mutex.unlock();
+
+                if (delay_ms == 0) {
+                    return TaskErrors.InvalidDelay;
+                }
+
+                self.delay_ms = delay_ms;
 
                 if (self.executorRunning) {
                     return TaskErrors.AlreadyRunning;
@@ -94,7 +100,7 @@ pub fn Timer(Context: type) type {
 
         pub fn reschedule(self: *Self) !void {
             self.cancel();
-            try self.start();
+            try self.start(self.delay_ms);
         }
     };
 }

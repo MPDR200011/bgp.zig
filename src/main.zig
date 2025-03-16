@@ -14,10 +14,8 @@ const headerReader = @import("messaging/parsing/header.zig");
 const openReader = @import("messaging/parsing/open.zig");
 const bgpEncoding = @import("messaging/encoding/encoder.zig");
 
-pub const PeerSessionAddresses = struct {
-    localAddress: []const u8,
-    peerAddress: []const u8,
-};
+const PeerSessionAddresses = session.PeerSessionAddresses;
+const Peer = session.Peer;
 
 pub const PeerMapCtx = struct {
     const Self = @This();
@@ -31,14 +29,6 @@ pub const PeerMapCtx = struct {
     }
 };
 
-pub const Peer = struct {
-    sessionAddresses: PeerSessionAddresses,
-    sessionInfo: session.Session,
-    sessionFSM: fsm.SessionFSM,
-
-    const Self = @This();
-};
-
 pub const PeerMap = std.HashMap(PeerSessionAddresses, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
 
 pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]const u8 {
@@ -48,42 +38,30 @@ pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]cons
     try address.format("", .{}, addressWriter);
 
     const newBuffer: []u8 = try allocator.alloc(u8, addressStream.getPos() catch unreachable);
+    errdefer allocator.free(newBuffer);
+
     std.mem.copyForwards(u8, newBuffer, addressStream.getWritten());
     return newBuffer;
 }
 
-pub fn connectionHandler(conn: net.Server.Connection, peerMap: *PeerMap, allocator: Allocator) !void {
-    defer conn.stream.close();
+const ConnectionHandlerContext = struct {
+    conn: net.Server.Connection,
+    peer: *Peer,
+};
 
-    const peerAddr = conn.address;
-    const peerAddrStr = try getAddrString(peerAddr, allocator);
-    defer allocator.free(peerAddrStr);
-
-    var local_addr: net.Address = undefined;
-    var addr_len: posix.socklen_t = @sizeOf(net.Address);
-    posix.getsockname(conn.stream.handle, &local_addr.any, &addr_len) catch |err| {
-        std.log.err("Error getting local address for connection : {s}", .{@errorName(err)});
-    };
-    const localAddrStr = try getAddrString(peerAddr, allocator);
-    defer allocator.free(localAddrStr);
-
-    var peer = peerMap.get(PeerSessionAddresses{
-        .localAddress = localAddrStr,
-        .peerAddress = peerAddrStr,
-    }) orelse {
-        std.log.info("Received connection request from unconfigured peer localAddr={s} remoteAddr={s}", .{ localAddrStr, peerAddrStr });
-        return;
-    };
-
-    // TODO: get the configured peer, close connection if the peer is not configured
-
-    const client_reader = conn.stream.reader().any();
+pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
+    const client_reader = ctx.conn.stream.reader().any();
 
     while (true) {
-        const messageHeader = try headerReader.readHeader(client_reader);
+        const messageHeader = headerReader.readHeader(client_reader) catch |e| {
+            std.log.err("Error reading message header: {}", .{e});
+            return;
+        };
         const message: model.BgpMessage = switch (messageHeader.messageType) {
-            .OPEN => .{ .OPEN = try openReader.readOpenMessage(client_reader) },
-            .KEEPALIVE => .{ .KEEPALIVE = .{} },
+            .OPEN => .{ .OPEN = openReader.readOpenMessage(client_reader) catch |err| {
+                std.log.err("Error parsing OPEN message: {}", .{err});
+                return;
+            } },
             else => {
                 return;
             },
@@ -91,15 +69,70 @@ pub fn connectionHandler(conn: net.Server.Connection, peerMap: *PeerMap, allocat
 
         const event: fsm.Event = switch (message) {
             .OPEN => |openMessage| .{ .OpenReceived = openMessage },
+            .KEEPALIVE => .{ .KeepAliveReceived = {} },
             else => return,
         };
 
-        peer.sessionFSM.handleEvent(event) catch |err| {
-            std.log.err("Error handling event {}: {}", .{@tagName(event), err});
+        ctx.peer.sessionFSM.handleEvent(event) catch |err| {
+            std.log.err("Error handling event {s}: {}", .{ @tagName(event), err
+            });
         };
-
-        // TODO: Pass event to the FSM
     }
+}
+
+const AcceptContext = struct {
+    conn: net.Server.Connection,
+    peerMap: *PeerMap,
+    allocator: Allocator,
+};
+
+pub fn acceptHandler(ctx: AcceptContext) !void {
+    defer ctx.conn.stream.close();
+
+    const peerAddr = ctx.conn.address;
+    const peerAddrStr = try getAddrString(peerAddr, ctx.allocator);
+    defer ctx.allocator.free(peerAddrStr);
+
+    var local_addr: net.Address = undefined;
+    var addr_len: posix.socklen_t = @sizeOf(net.Address);
+    posix.getsockname(ctx.conn.stream.handle, &local_addr.any, &addr_len) catch |err| {
+        std.log.err("Error getting local address for connection : {s}", .{@errorName(err)});
+    };
+    const localAddrStr = try getAddrString(peerAddr, ctx.allocator);
+    defer ctx.allocator.free(localAddrStr);
+
+    var peer = ctx.peerMap.get(PeerSessionAddresses{
+        .localAddress = localAddrStr,
+        .peerAddress = peerAddrStr,
+    }) orelse {
+        std.log.info("Received connection request from unconfigured peer localAddr={s} remoteAddr={s}", .{ localAddrStr, peerAddrStr });
+        return;
+    };
+
+    const client_reader = ctx.conn.stream.reader().any();
+
+    const messageHeader = try headerReader.readHeader(client_reader);
+    const message: model.BgpMessage = switch (messageHeader.messageType) {
+        .OPEN => .{ .OPEN = openReader.readOpenMessage(client_reader) catch |err| {
+            std.log.err("Error parsing OPEN message: {}", .{err});
+            return;
+        } },
+        else => {
+            return;
+        },
+    };
+
+    const event: fsm.Event = switch (message) {
+        .OPEN => |openMessage| .{ .OpenReceived = openMessage },
+        else => return,
+    };
+
+    peer.sessionFSM.handleEvent(event) catch |err| {
+        std.log.err("Error handling event {s}: {}", .{ @tagName(event), err });
+    };
+
+    const connectionContext: ConnectionHandlerContext = .{ .conn = ctx.conn, .peer = peer };
+    _ = try std.Thread.spawn(.{}, connectionHandler, .{connectionContext});
 }
 
 pub fn main() !void {
@@ -168,7 +201,7 @@ pub fn main() !void {
             .localAddress = localAddr,
             .peerAddress = peerAddr,
         },
-        .sessionInfo = .init(mode),
+        .sessionInfo = .init(mode, peer),
         .sessionFSM = .init(&peer.sessionInfo),
     };
 
@@ -186,7 +219,7 @@ pub fn main() !void {
 
     std.log.info("Connection received from {s}", .{peerAddrStr});
 
-    var connectionThread = try std.Thread.spawn(.{}, connectionHandler, .{ client, &peerMap, gpa });
-
-    connectionThread.join();
+    const acceptContext: AcceptContext = .{ .conn = client, .peerMap = &peerMap, .allocator = gpa };
+    var acceptThread = try std.Thread.spawn(.{}, acceptHandler, .{acceptContext});
+    acceptThread.join();
 }
