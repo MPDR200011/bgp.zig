@@ -38,7 +38,7 @@ fn sendHoldTimerEvent(p: *Peer) void {
 }
 
 fn sendDelayOpenEvent(p: *Peer) void {
-    p.sessionFSM.handleEvent(.{ .DelayopenTimerExpired = {} }) catch {
+    p.sessionFSM.handleEvent(.{ .DelayOpenTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }

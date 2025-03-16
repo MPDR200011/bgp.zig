@@ -16,7 +16,7 @@ const EventTag = enum(u8) {
     HoldTimerExpired = 5,
     KeepAliveTimerExpired = 6,
     KeepAliveReceived = 7,
-    DelayopenTimerExpired = 8,
+    DelayOpenTimerExpired = 8,
 };
 
 pub const Event = union(EventTag) {
@@ -27,7 +27,7 @@ pub const Event = union(EventTag) {
     HoldTimerExpired: void,
     KeepAliveTimerExpired: void,
     KeepAliveReceived: void,
-    DelayopenTimerExpired: void,
+    DelayOpenTimerExpired: void,
 };
 
 const PostHandlerActionTag = enum(u8) {
