@@ -19,9 +19,7 @@ fn handleStop(peer: *Peer) !PostHandlerAction {
     session.connectionRetryCount = 0;
     session.connectionRetryTimer.cancel();
 
-    return .{
-        .Transition = .IDLE
-    };
+    return .{ .Transition = .IDLE };
 }
 
 fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
@@ -46,24 +44,19 @@ fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
         };
     };
 
-
     session.connectionRetryTimer.cancel();
 
     if (peer.delayOpen) {
         try session.delayOpenTimer.start(peer.delayOpen_ms);
 
-        return .{
-            .Keep = {}
-        };
+        return .{ .Keep = {} };
     }
 
     const openMsg: model.BgpMessage = .{ .OPEN = .{ .version = 4, .asNumber = peer.localAsn, .holdTime = peer.holdTime, .peerRouterId = 0, .parameters = null } };
     try session.messageEncoder.writeMessage(openMsg, session.peerConnection.?.writer().any());
     try session.holdTimer.start(4 * std.time.ms_per_min);
 
-    return .{
-        .Transition = .OPEN_SENT
-    };
+    return .{ .Transition = .OPEN_SENT };
 }
 
 fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
@@ -75,9 +68,7 @@ fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
     try session.messageEncoder.writeMessage(openMsg, session.peerConnection.?.writer().any());
     try session.holdTimer.start(4 * std.time.ms_per_min);
 
-    return .{
-        .Transition = .OPEN_SENT
-    };
+    return .{ .Transition = .OPEN_SENT };
 }
 
 fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
@@ -97,9 +88,7 @@ fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
 
         session.closeConnection();
 
-        return .{
-            .Transition = .IDLE
-        };
+        return .{ .Transition = .IDLE };
     }
 }
 
@@ -127,16 +116,14 @@ fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
     const openResponse: model.BgpMessage = .{ .OPEN = .{ .version = 4, .asNumber = peer.localAsn, .holdTime = peer.holdTime, .peerRouterId = 0, .parameters = null } };
     try session.messageEncoder.writeMessage(openResponse, session.peerConnection.?.writer().any());
 
-    const keepalive: model.BgpMessage = .{.KEEPALIVE = .{}};
+    const keepalive: model.BgpMessage = .{ .KEEPALIVE = .{} };
     try session.messageEncoder.writeMessage(keepalive, session.peerConnection.?.writer().any());
 
     // TODO this now needs to be set to the negotiated value
     try session.holdTimer.start(negotiatedHoldTimer);
-    try session.keepAliveTimer.start(negotiatedHoldTimer/3);
+    try session.keepAliveTimer.start(negotiatedHoldTimer / 3);
 
-    return .{
-        .Transition = .OPEN_CONFIRM
-    };
+    return .{ .Transition = .OPEN_CONFIRM };
 }
 
 pub fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
@@ -152,9 +139,7 @@ pub fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
 
     // TODO: Peer Oscillation goes here, if ever
 
-    return .{
-        .Transition = .IDLE
-    };
+    return .{ .Transition = .IDLE };
 }
 
 pub fn handleEvent(peer: *Peer, event: Event) !PostHandlerAction {

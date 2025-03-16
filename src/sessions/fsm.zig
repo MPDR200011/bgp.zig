@@ -30,7 +30,7 @@ pub const Event = union(EventTag) {
     KeepAliveTimerExpired: void,
     KeepAliveReceived: void,
     DelayOpenTimerExpired: void,
-    TcpConnectionFailed : void,
+    TcpConnectionFailed: void,
 };
 
 const PostHandlerActionTag = enum(u8) {
@@ -90,7 +90,7 @@ pub const SessionFSM = struct {
         self.parent.sessionInfo.mutex.lock();
         defer self.parent.sessionInfo.mutex.unlock();
 
-        std.log.info("Session switching state: {s} => {s}", .{@tagName(self.parent.sessionInfo.state), @tagName(nextState)});
+        std.log.info("Session switching state: {s} => {s}", .{ @tagName(self.parent.sessionInfo.state), @tagName(nextState) });
 
         self.parent.sessionInfo.state = nextState;
 
