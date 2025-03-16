@@ -8,6 +8,7 @@ const Allocator = std.mem.Allocator;
 
 const fsm = @import("sessions/fsm.zig");
 const session = @import("sessions/session.zig");
+const connections = @import("sessions/connections.zig");
 
 const model = @import("messaging/model.zig");
 const headerReader = @import("messaging/parsing/header.zig");
@@ -42,42 +43,6 @@ pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]cons
 
     std.mem.copyForwards(u8, newBuffer, addressStream.getWritten());
     return newBuffer;
-}
-
-const ConnectionHandlerContext = struct {
-    conn: net.Server.Connection,
-    peer: *Peer,
-};
-
-pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
-    const client_reader = ctx.conn.stream.reader().any();
-
-    while (true) {
-        const messageHeader = headerReader.readHeader(client_reader) catch |e| {
-            std.log.err("Error reading message header: {}", .{e});
-            return;
-        };
-        const message: model.BgpMessage = switch (messageHeader.messageType) {
-            .OPEN => .{ .OPEN = openReader.readOpenMessage(client_reader) catch |err| {
-                std.log.err("Error parsing OPEN message: {}", .{err});
-                return;
-            } },
-            else => {
-                return;
-            },
-        };
-
-        const event: fsm.Event = switch (message) {
-            .OPEN => |openMessage| .{ .OpenReceived = openMessage },
-            .KEEPALIVE => .{ .KeepAliveReceived = {} },
-            else => return,
-        };
-
-        ctx.peer.sessionFSM.handleEvent(event) catch |err| {
-            std.log.err("Error handling event {s}: {}", .{ @tagName(event), err
-            });
-        };
-    }
 }
 
 const AcceptContext = struct {
@@ -131,8 +96,8 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
         std.log.err("Error handling event {s}: {}", .{ @tagName(event), err });
     };
 
-    const connectionContext: ConnectionHandlerContext = .{ .conn = ctx.conn, .peer = peer };
-    _ = try std.Thread.spawn(.{}, connectionHandler, .{connectionContext});
+    const connectionContext: connections.ConnectionHandlerContext = .{ .peer = peer };
+    _ = try std.Thread.spawn(.{}, connections.connectionHandler, .{connectionContext});
 }
 
 pub fn main() !void {
@@ -196,14 +161,17 @@ pub fn main() !void {
     }
 
     const peer = try gpa.create(Peer);
-    peer.* = .{
+    peer.* = .init(.{
+        .localAsn = 9000,
+        .holdTime = 60,
+        .localRouterId=0,
+        .mode=mode,
+        .delayOpen=false,
         .sessionAddresses = .{
             .localAddress = localAddr,
             .peerAddress = peerAddr,
         },
-        .sessionInfo = .init(mode, peer),
-        .sessionFSM = .init(&peer.sessionInfo),
-    };
+    }, peer, gpa);
 
     try peerMap.put(peer.sessionAddresses, peer);
 

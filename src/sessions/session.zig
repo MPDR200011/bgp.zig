@@ -1,6 +1,7 @@
 const std = @import("std");
 const timer = @import("../utils/timer.zig");
 const fsm = @import("fsm.zig");
+const encoder = @import("../messaging/encoding/encoder.zig");
 
 const Timer = timer.Timer;
 
@@ -41,7 +42,6 @@ pub const Session = struct {
     pub const CONNECTION_RETRY_TIMER_DEFAULT = 30 * std.time.ms_per_s;
 
     state: SessionState,
-    mode: Mode,
 
     mutex: std.Thread.Mutex,
 
@@ -50,15 +50,27 @@ pub const Session = struct {
     holdTimer: timer.Timer(*Peer),
     keepAliveTimer: timer.Timer(*Peer),
 
-    pub fn init(mode: Mode, parent: *Peer) Self {
+    peerConnection: ?std.net.Stream,
+    peerConnectionThread: ?std.Thread,
+
+    messageEncoder: encoder.MessageEncoder,
+
+    pub fn init(parent: *Peer, alloc: std.mem.Allocator) Self {
         return .{
             .state = .IDLE,
-            .mode = mode,
             .mutex = .{},
             .connectionRetryTimer = .init(sendConnectionRetryEvent, parent),
             .holdTimer = .init(sendHoldTimerEvent, parent),
             .keepAliveTimer = .init(sendKeepAliveEvent, parent),
+            .peerConnection = null,
+            .peerConnectionThread = null,
+            .messageEncoder = .init(alloc),
         };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.peerConnection.?.stream.close();
+        self.peerConnectionThread.?.join();
     }
 };
 
@@ -67,10 +79,38 @@ pub const PeerSessionAddresses = struct {
     peerAddress: []const u8,
 };
 
+pub const PeerConfig = struct {
+    localAsn: u16,
+    holdTime: u16,
+    localRouterId: u32,
+    mode: Mode,
+    delayOpen: bool,
+
+    sessionAddresses: PeerSessionAddresses,
+};
 pub const Peer = struct {
     const Self = @This();
+
+    localAsn: u16,
+    holdTime: u16,
+    localRouterId: u32,
+    mode: Mode,
+    delayOpen: bool,
 
     sessionAddresses: PeerSessionAddresses,
     sessionInfo: Session,
     sessionFSM: fsm.SessionFSM,
+
+    pub fn init(cfg: PeerConfig, self: *Self, alloc: std.mem.Allocator) Self {
+        return .{
+            .localAsn = cfg.localAsn,
+            .holdTime = cfg.holdTime,
+            .localRouterId =  cfg.localRouterId,
+            .mode = cfg.mode,
+            .delayOpen = cfg.delayOpen,
+            .sessionAddresses = cfg.sessionAddresses,
+            .sessionInfo = .init(self, alloc),
+            .sessionFSM = .init(self),
+        };
+    }
 };

@@ -4,6 +4,7 @@ const messageModel = @import("../messaging/model.zig");
 const idleHandler = @import("handlers/idle.zig");
 
 const Session = sessionLib.Session;
+const Peer = sessionLib.Peer;
 const Mode = sessionLib.Mode;
 const SessionState = sessionLib.SessionState;
 
@@ -71,20 +72,20 @@ pub const SessionFSM = struct {
 
     mutex: std.Thread.Mutex,
 
-    session: *Session,
+    parent: *Peer,
 
-    pub fn init(session: *Session) Self {
+    pub fn init(parent: *Peer) Self {
         return .{
             .mutex = .{},
-            .session = session,
+            .parent = parent,
         };
     }
 
     fn switchState(self: *Self, nextState: SessionState) !void {
-        self.session.mutex.lock();
-        defer self.session.mutex.unlock();
+        self.parent.sessionInfo.mutex.lock();
+        defer self.parent.sessionInfo.mutex.unlock();
 
-        self.session.state = nextState;
+        self.parent.sessionInfo.state = nextState;
 
         switch (nextState) {
             else => return,
@@ -95,8 +96,8 @@ pub const SessionFSM = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        const nextAction: PostHandlerAction = switch (self.session.state) {
-            .IDLE => try idleHandler.handleEvent(self.session, event),
+        const nextAction: PostHandlerAction = switch (self.parent.sessionInfo.state) {
+            .IDLE => try idleHandler.handleEvent(self.parent, event),
             else => .{ .Keep = {} },
         };
 
