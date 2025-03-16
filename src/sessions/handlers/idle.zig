@@ -18,16 +18,16 @@ fn handleStart(peer: *Peer) !PostHandlerAction {
 
     session.connectionRetryCount = 0;
     try session.connectionRetryTimer.start(Session.CONNECTION_RETRY_TIMER_DEFAULT);
-     
+
     if (peer.mode == .PASSIVE) {
         return .{
             .Transition = .ACTIVE,
         };
-    } 
+    }
 
     // Start Connection Thread
     const peerAddress = std.net.Address.parseIp(peer.sessionAddresses.peerAddress, 179) catch {
-        return .{.Keep = {}};
+        return .{ .Keep = {} };
     };
     const peerConnection = std.net.tcpConnectToAddress(peerAddress) catch {
         // BGP connection failed
@@ -37,35 +37,36 @@ fn handleStart(peer: *Peer) !PostHandlerAction {
         // event later) and I don't want to learn that right now, so I'll
         // handle that here.
 
+        // TODO: check delay open timer, when we implement that
 
-        // TODO check delay open timer, when we implement that
+        // Cancel the retry timer
         session.connectionRetryTimer.cancel();
-        session.peerConnection.?.close();
-        return .{.Transition = .IDLE,};
-    };
-    
-    session.peerConnection = peerConnection;
 
-    const connContext: connections.ConnectionHandlerContext = .{
-        .peer = peer
+        // Close the connection
+        session.peerConnection = null;
+        session.peerConnectionThread = null;
+
+        // Transition to IDLE state, which means stay in this state, in this
+        // specific implementation
+        return .{
+            .Keep = {},
+        };
     };
+    session.connectionRetryTimer.cancel();
+
+    // Seet connection data in the session
+    session.peerConnection = peerConnection;
+    const connContext: connections.ConnectionHandlerContext = .{ .peer = peer };
     session.peerConnectionThread = try std.Thread.spawn(.{}, connections.connectionHandler, .{connContext});
 
     if (peer.delayOpen) {
-        // TODO delay open logic
+        try session.delayOpenTimer.start(peer.delayOpen_ms);
+        return .{ .Transition = .CONNECT };
     }
 
-    session.connectionRetryTimer.cancel();
-
-    const openMsg: model.BgpMessage = .{.OPEN = .{
-        .version = 4,
-        .asNumber = peer.localAsn,
-        .holdTime = peer.holdTime,
-        .peerRouterId = 0,
-        .parameters = null
-    }};
+    const openMsg: model.BgpMessage = .{ .OPEN = .{ .version = 4, .asNumber = peer.localAsn, .holdTime = peer.holdTime, .peerRouterId = 0, .parameters = null } };
     try session.messageEncoder.writeMessage(openMsg, peerConnection.writer().any());
-    try session.holdTimer.start(4*std.time.ms_per_min);
+    try session.holdTimer.start(4 * std.time.ms_per_min);
     return .{ .Transition = .OPEN_SENT };
 }
 
@@ -75,4 +76,3 @@ pub fn handleEvent(peer: *Peer, event: Event) !PostHandlerAction {
         else => return .{ .Keep = {} },
     }
 }
-

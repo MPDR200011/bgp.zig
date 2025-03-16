@@ -164,9 +164,9 @@ pub fn main() !void {
     peer.* = .init(.{
         .localAsn = 9000,
         .holdTime = 60,
-        .localRouterId=0,
-        .mode=mode,
-        .delayOpen=false,
+        .localRouterId = 0,
+        .mode = mode,
+        .delayOpen = false,
         .sessionAddresses = .{
             .localAddress = localAddr,
             .peerAddress = peerAddr,

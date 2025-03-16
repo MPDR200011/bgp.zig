@@ -1,9 +1,6 @@
 const std = @import("std");
 
-const TaskErrors = error{
-    AlreadyRunning,
-    InvalidDelay
-};
+const TaskErrors = error{ AlreadyRunning, InvalidDelay };
 
 pub fn Timer(Context: type) type {
     return struct {
@@ -53,6 +50,10 @@ pub fn Timer(Context: type) type {
 
             self.finishedRunning = true;
             self.executorRunning = false;
+        }
+
+        pub fn isActive(self: *Self) bool {
+            return self.executorRunning;
         }
 
         pub fn start(self: *Self, delay_ms: u64) !void {

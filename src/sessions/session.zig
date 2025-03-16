@@ -22,19 +22,25 @@ pub const Mode = enum(u8) {
 fn sendConnectionRetryEvent(p: *Peer) void {
     p.sessionFSM.handleEvent(.{ .ConnectionRetryTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
-};
+    };
 }
 
 fn sendKeepAliveEvent(p: *Peer) void {
     p.sessionFSM.handleEvent(.{ .KeepAliveTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
-};
+    };
 }
 
 fn sendHoldTimerEvent(p: *Peer) void {
     p.sessionFSM.handleEvent(.{ .HoldTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
-};
+    };
+}
+
+fn sendDelayOpenEvent(p: *Peer) void {
+    p.sessionFSM.handleEvent(.{ .DelayopenTimerExpired = {} }) catch {
+        std.log.err("Error event", .{});
+    };
 }
 
 pub const Session = struct {
@@ -49,6 +55,7 @@ pub const Session = struct {
     connectionRetryTimer: timer.Timer(*Peer),
     holdTimer: timer.Timer(*Peer),
     keepAliveTimer: timer.Timer(*Peer),
+    delayOpenTimer: timer.Timer(*Peer),
 
     peerConnection: ?std.net.Stream,
     peerConnectionThread: ?std.Thread,
@@ -62,6 +69,7 @@ pub const Session = struct {
             .connectionRetryTimer = .init(sendConnectionRetryEvent, parent),
             .holdTimer = .init(sendHoldTimerEvent, parent),
             .keepAliveTimer = .init(sendKeepAliveEvent, parent),
+            .delayOpenTimer = .init(sendDelayOpenEvent, parent),
             .peerConnection = null,
             .peerConnectionThread = null,
             .messageEncoder = .init(alloc),
@@ -85,6 +93,7 @@ pub const PeerConfig = struct {
     localRouterId: u32,
     mode: Mode,
     delayOpen: bool,
+    delayOpen_ms: u32 = 0,
 
     sessionAddresses: PeerSessionAddresses,
 };
@@ -96,6 +105,7 @@ pub const Peer = struct {
     localRouterId: u32,
     mode: Mode,
     delayOpen: bool,
+    delayOpen_ms: u32 = 0,
 
     sessionAddresses: PeerSessionAddresses,
     sessionInfo: Session,
@@ -105,9 +115,10 @@ pub const Peer = struct {
         return .{
             .localAsn = cfg.localAsn,
             .holdTime = cfg.holdTime,
-            .localRouterId =  cfg.localRouterId,
+            .localRouterId = cfg.localRouterId,
             .mode = cfg.mode,
             .delayOpen = cfg.delayOpen,
+            .delayOpen_ms = cfg.delayOpen_ms,
             .sessionAddresses = cfg.sessionAddresses,
             .sessionInfo = .init(self, alloc),
             .sessionFSM = .init(self),

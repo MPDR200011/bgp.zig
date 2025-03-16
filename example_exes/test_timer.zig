@@ -6,10 +6,7 @@ fn sayHello(_: void) void {
 }
 
 pub fn main() !void {
-    var task = timer.Timer(void).init(
-        sayHello,
-        {}
-    );
+    var task = timer.Timer(void).init(sayHello, {});
     defer task.deinit();
 
     // Normal operation

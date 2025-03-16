@@ -21,6 +21,8 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
     }
     const client_reader = ctx.peer.sessionInfo.peerConnection.?.reader().any();
 
+    // TODO: this guy will need to know if the connection teardown is graceful or not,
+    // possibly a "graceful" flag in the session struct?
     while (true) {
         const messageHeader = headerReader.readHeader(client_reader) catch |e| {
             std.log.err("Error reading message header: {}", .{e});
@@ -48,4 +50,3 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
         };
     }
 }
-
