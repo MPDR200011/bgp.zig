@@ -1,6 +1,7 @@
 const std = @import("std");
 const timer = @import("../utils/timer.zig");
 const fsm = @import("fsm.zig");
+const connections = @import("connections.zig");
 const encoder = @import("../messaging/encoding/encoder.zig");
 
 const Timer = timer.Timer;
@@ -48,6 +49,7 @@ pub const Session = struct {
     pub const CONNECTION_RETRY_TIMER_DEFAULT = 30 * std.time.ms_per_s;
 
     state: SessionState,
+    parent: *Peer,
 
     mutex: std.Thread.Mutex,
 
@@ -65,6 +67,7 @@ pub const Session = struct {
     pub fn init(parent: *Peer, alloc: std.mem.Allocator) Self {
         return .{
             .state = .IDLE,
+            .parent = parent,
             .mutex = .{},
             .connectionRetryTimer = .init(sendConnectionRetryEvent, parent),
             .holdTimer = .init(sendHoldTimerEvent, parent),
@@ -77,8 +80,32 @@ pub const Session = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.peerConnection.?.stream.close();
+        self.closeConnection();
+    }
+
+    pub fn startConnection(self: *Self) !void {
+        // Start Connection Thread
+        const peerAddress = std.net.Address.parseIp(self.parent.sessionAddresses.peerAddress, 179) catch unreachable;
+        const peerConnection = try std.net.tcpConnectToAddress(peerAddress);
+
+        // Seet connection data in the session
+        self.peerConnection = peerConnection;
+        const connContext: connections.ConnectionHandlerContext = .{ .peer = self.parent };
+        self.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
+            self.peerConnection.?.close();
+            self.peerConnectionThread.?.join();
+            self.peerConnection = null;
+            self.peerConnectionThread = null;
+
+            return err;
+        };
+    }
+
+    pub fn closeConnection(self: *Self) void {
+        self.peerConnection.?.close();
         self.peerConnectionThread.?.join();
+        self.peerConnection = null;
+        self.peerConnectionThread = null;
     }
 };
 
