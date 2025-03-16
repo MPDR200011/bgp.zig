@@ -84,7 +84,7 @@ pub fn Timer(Context: type) type {
                 self.mutex.lock();
                 defer self.mutex.unlock();
 
-                if (self.finishedRunning) {
+                if (self.finishedRunning or !self.executorRunning) {
                     return;
                 }
 
