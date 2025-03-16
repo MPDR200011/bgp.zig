@@ -2,6 +2,7 @@ const std = @import("std");
 const sessionLib = @import("session.zig");
 const messageModel = @import("../messaging/model.zig");
 const idleHandler = @import("handlers/idle.zig");
+const connectHandler = @import("handlers/connect.zig");
 
 const Session = sessionLib.Session;
 const Peer = sessionLib.Peer;
@@ -17,6 +18,7 @@ const EventTag = enum(u8) {
     KeepAliveTimerExpired = 6,
     KeepAliveReceived = 7,
     DelayOpenTimerExpired = 8,
+    TcpConnectionFailed = 9,
 };
 
 pub const Event = union(EventTag) {
@@ -28,6 +30,7 @@ pub const Event = union(EventTag) {
     KeepAliveTimerExpired: void,
     KeepAliveReceived: void,
     DelayOpenTimerExpired: void,
+    TcpConnectionFailed : void,
 };
 
 const PostHandlerActionTag = enum(u8) {
@@ -87,6 +90,8 @@ pub const SessionFSM = struct {
         self.parent.sessionInfo.mutex.lock();
         defer self.parent.sessionInfo.mutex.unlock();
 
+        std.log.info("Session switching state: {s} => {s}", .{@tagName(self.parent.sessionInfo.state), @tagName(nextState)});
+
         self.parent.sessionInfo.state = nextState;
 
         switch (nextState) {
@@ -100,6 +105,7 @@ pub const SessionFSM = struct {
 
         const nextAction: PostHandlerAction = switch (self.parent.sessionInfo.state) {
             .IDLE => try idleHandler.handleEvent(self.parent, event),
+            .CONNECT => try connectHandler.handleEvent(self.parent, event),
             else => .{ .Keep = {} },
         };
 
