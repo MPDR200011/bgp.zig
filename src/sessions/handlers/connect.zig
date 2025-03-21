@@ -101,12 +101,7 @@ fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
 
     session.connectionRetryTimer.cancel();
 
-    // TODO extract peer information from the message:
-    // - router ID
-    // - remote ASN
-    // - holdTimer
-    // - Internal/External connection
-    // - etc.
+    session.extractInfoFromOpenMessage(msg);
     const peerHoldTimer = msg.holdTime;
 
     const negotiatedHoldTimer = @min(peer.holdTime, peerHoldTimer);

@@ -1,6 +1,7 @@
 const std = @import("std");
 const timer = @import("../utils/timer.zig");
 const fsm = @import("fsm.zig");
+const model = @import("../messaging/model.zig");
 const connections = @import("connections.zig");
 const encoder = @import("../messaging/encoding/encoder.zig");
 
@@ -21,24 +22,32 @@ pub const Mode = enum(u8) {
 };
 
 fn sendConnectionRetryEvent(p: *Peer) void {
+    p.lock();
+    defer p.unlock();
     p.sessionFSM.handleEvent(.{ .ConnectionRetryTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
 
 fn sendKeepAliveEvent(p: *Peer) void {
+    p.lock();
+    defer p.unlock();
     p.sessionFSM.handleEvent(.{ .KeepAliveTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
 
 fn sendHoldTimerEvent(p: *Peer) void {
+    p.lock();
+    defer p.unlock();
     p.sessionFSM.handleEvent(.{ .HoldTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
 
 fn sendDelayOpenEvent(p: *Peer) void {
+    p.lock();
+    defer p.unlock();
     p.sessionFSM.handleEvent(.{ .DelayOpenTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
@@ -50,11 +59,18 @@ pub const ConnectionState = enum(u8) {
 };
 
 pub const Session = struct {
+
+    const Info = struct {
+        peerId: u32,
+        peerAsn: u16,
+    };
+
     const Self = @This();
     pub const CONNECTION_RETRY_TIMER_DEFAULT = 30 * std.time.ms_per_s;
 
     state: SessionState,
     parent: *Peer,
+    info: ?Info,
 
     mutex: std.Thread.Mutex,
 
@@ -76,6 +92,7 @@ pub const Session = struct {
         return .{
             .state = .IDLE,
             .parent = parent,
+            .info = null,
             .mutex = .{},
             .connectionRetryTimer = .init(sendConnectionRetryEvent, parent),
             .holdTimer = .init(sendHoldTimerEvent, parent),
@@ -86,6 +103,13 @@ pub const Session = struct {
             .peerConnectionThread = null,
             .messageEncoder = .init(alloc),
             .allocator = alloc,
+        };
+    }
+
+    pub fn extractInfoFromOpenMessage(self: *Self, msg: model.OpenMessage) void {
+        self.info = .{
+            .peerId = msg.peerRouterId,
+            .peerAsn = msg.asNumber,
         };
     }
 
@@ -189,6 +213,8 @@ pub const Peer = struct {
     sessionInfo: Session,
     sessionFSM: fsm.SessionFSM,
 
+    mutex: std.Thread.Mutex,
+
     pub fn init(cfg: PeerConfig, self: *Self, alloc: std.mem.Allocator) Self {
         return .{
             .localAsn = cfg.localAsn,
@@ -200,6 +226,15 @@ pub const Peer = struct {
             .sessionAddresses = cfg.sessionAddresses,
             .sessionInfo = .init(self, alloc),
             .sessionFSM = .init(self),
+            .mutex = .{},
         };
+    }
+
+    pub fn lock(self: *Self) void {
+        self.mutex.lock();
+    }
+
+    pub fn unlock(self: *Self) void {
+        self.mutex.unlock();
     }
 };

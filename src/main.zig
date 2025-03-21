@@ -45,14 +45,26 @@ pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]cons
     return newBuffer;
 }
 
+const DeviceConfig = struct {
+    asn: u16,
+    routerId: u32,
+};
+
 const AcceptContext = struct {
     conn: net.Server.Connection,
     peerMap: *PeerMap,
     allocator: Allocator,
+    localConfig: DeviceConfig,
+};
+
+const AcceptHandlerError = error{
+    PeerNotConfigured,
+    ParsingError,
+    UnexpectedMessageType,
 };
 
 pub fn acceptHandler(ctx: AcceptContext) !void {
-    defer ctx.conn.stream.close();
+    errdefer ctx.conn.stream.close();
 
     const peerAddr = ctx.conn.address;
     const peerAddrStr = try getAddrString(peerAddr, ctx.allocator);
@@ -66,31 +78,42 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
     const localAddrStr = try getAddrString(peerAddr, ctx.allocator);
     defer ctx.allocator.free(localAddrStr);
 
-    _ = ctx.peerMap.get(PeerSessionAddresses{
+    const peer = ctx.peerMap.get(PeerSessionAddresses{
         .localAddress = localAddrStr,
         .peerAddress = peerAddrStr,
     }) orelse {
         std.log.info("Received connection request from unconfigured peer localAddr={s} remoteAddr={s}", .{ localAddrStr, peerAddrStr });
-        return;
+        return AcceptHandlerError.PeerNotConfigured;
     };
 
-    const client_reader = ctx.conn.stream.reader().any();
+    const clientReader = ctx.conn.stream.reader().any();
 
-    const messageHeader = try headerReader.readHeader(client_reader);
-    const message: model.BgpMessage = switch (messageHeader.messageType) {
-        .OPEN => .{ .OPEN = openReader.readOpenMessage(client_reader) catch |err| {
-            std.log.err("Error parsing OPEN message: {}", .{err});
-            return;
-        } },
-        else => {
-            return;
-        },
+    const messageHeader = try headerReader.readHeader(clientReader);
+    if (messageHeader.messageType != .OPEN) {
+        return AcceptHandlerError.UnexpectedMessageType;
+    }
+
+    const openMessage = openReader.readOpenMessage(clientReader) catch |err| {
+        std.log.err("Error parsing OPEN message: {}", .{err});
+        return err;
     };
 
-    _ = switch (message) {
-        .OPEN => |openMessage| .{ .OpenReceived = openMessage },
-        else => return,
-    };
+    collisionDetection: {
+        peer.lock();
+        defer peer.unlock();
+
+        if (peer.sessionInfo.state != .OPEN_CONFIRM) {
+            break :collisionDetection;
+        }
+
+        if (ctx.localConfig.routerId < peer.sessionInfo.info.?.peerId) {
+            // Local ID is lower
+            try peer.sessionFSM.handleEvent(.{ .OpenCollisionDump = .{.openMsg = openMessage, .newConnection = ctx.conn.stream}});
+        } else {
+            ctx.conn.stream.close();
+        }
+    }
+
 }
 
 pub fn main() !void {
