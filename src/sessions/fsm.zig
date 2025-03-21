@@ -6,6 +6,7 @@ const connectHandler = @import("handlers/connect.zig");
 const activeHandler = @import("handlers/active.zig");
 const openSentHandler = @import("handlers/open_sent.zig");
 const openConfirmHandler = @import("handlers/open_confirm.zig");
+const establishedHandler = @import("handlers/established.zig");
 
 const Session = sessionLib.Session;
 const Peer = sessionLib.Peer;
@@ -24,6 +25,7 @@ const EventTag = enum(u8) {
     TcpConnectionFailed = 9,
     TcpConnectionSuccessful = 10,
     OpenCollisionDump = 11,
+    UpdateReceived = 12,
 };
 
 pub const CollisionContext = struct {
@@ -43,6 +45,7 @@ pub const Event = union(EventTag) {
     TcpConnectionFailed: void,
     TcpConnectionSuccessful: std.net.Stream,
     OpenCollisionDump: CollisionContext,
+    UpdateReceived: messageModel.UpdateMessage,
 };
 
 const PostHandlerActionTag = enum(u8) {
@@ -129,7 +132,7 @@ pub const SessionFSM = struct {
             .ACTIVE => try activeHandler.handleEvent(self.parent, event),
             .OPEN_SENT => try openSentHandler.handleEvent(self.parent, event),
             .OPEN_CONFIRM => try openConfirmHandler.handleEvent(self.parent, event),
-            else => .keep,
+            .ESTABLISHED => try establishedHandler.handleEvent(self.parent, event),
         };
 
         switch (nextAction) {
