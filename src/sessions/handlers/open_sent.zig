@@ -47,12 +47,26 @@ pub fn handleHoldTimerExpires(peer: *Peer) !PostHandlerAction {
 
     return .transition(.IDLE);
 }
+
+fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
+    const session = &peer.sessionInfo;
+    session.mutex.lock();
+    defer session.mutex.lock();
+
+    session.closeConnection();
+
+    try session.connectionRetryTimer.reschedule();
+    session.delayOpenTimer.cancel();
+
+    return .transition(.ACTIVE);
+}
 }
 
 pub fn handleEvent(peer: *Peer, event: Event) !PostHandlerAction {
     switch (event) {
         .Stop => return try handleStop(peer),
         .HoldTimerExpired => return try handleHoldTimerExpires(peer),
+        .TcpConnectionFailed => return try handleTcpFailed(peer),
         // Start events are ignored
         .Start => return .keep,
         // TODO handle message checking error events
