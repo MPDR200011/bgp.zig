@@ -20,12 +20,33 @@ pub const ErrorCode = enum(u8) {
 
 pub const ErrorKind = enum(u8) {
     Default = 0,
+    // Header Message Error subcodes:
+    ConnectionNotSynchronized=1,
+    BadMessageLength=2,
+    BadMessageType=3,
+    // OPEN Message Error subcodes:
+    UnsupportedVersionNumber=4,
+    BadPeerAS=5,
+    BadBGPIdentifier=6,
+    UnsupportedOptionalParameter=7,
+    UnacceptableHoldTime=8,
+    // UPDATE Message Error subcodes:
+    MalformedAttributeList=9,
+    UnrecognizedWellKnownAttribute=10,
+    MissingWellKnownAttribute=11,
+    AttributeFlagsError=12,
+    AttributeLengthError=13,
+    InvalidORIGINAttribute=14,
+    InvalidNEXT_HOPAttribute=15,
+    OptionalAttributeError=16,
+    InvalidNetworkField=17,
+    MalformedAS_PATH=18,
 };
 
 pub const NotificationMessage = struct {
     errorCode: ErrorCode,
     errorKind: ?ErrorKind,
-    // TODO data: []const u8,
+    data: []const u8,
 };
 
 pub const BgpMessageType = enum(u8) {
