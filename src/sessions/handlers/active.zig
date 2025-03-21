@@ -34,7 +34,7 @@ fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
     session.mutex.lock();
     defer session.mutex.lock();
 
-    session.connectionRetryTimer.reschedule();
+    try session.connectionRetryTimer.reschedule();
     session.startConnection() catch |err| {
         std.log.err("Error attempting to start connection to peer: {}", .{err});
 
@@ -86,7 +86,7 @@ fn handleNewTcpConnection(peer: *Peer, connection: std.net.Stream) !PostHandlerA
     session.mutex.lock();
     defer session.mutex.lock();
 
-    session.replacePeerConnection(connection);
+    try session.replacePeerConnection(connection);
 
     if (peer.delayOpen) {
         session.connectionRetryTimer.cancel();
