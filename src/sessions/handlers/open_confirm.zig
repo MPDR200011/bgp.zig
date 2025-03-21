@@ -120,7 +120,7 @@ fn handleConnectionCollision(peer: *Peer, ctx: CollisionContext) !PostHandlerAct
     return .keep;
 }
 
-fn handleKeepALiveReceived(peer: *Peer) !PostHandlerAction {
+fn handleKeepAliveReceived(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
     session.mutex.lock();
     defer session.mutex.lock();
@@ -158,7 +158,7 @@ pub fn handleEvent(peer: *Peer, event: Event) !PostHandlerAction {
         .KeepAliveTimerExpired => return try handleKeepAliveTimerExpires(peer),
         .TcpConnectionFailed => return try handleTcpFailed(peer),
         .OpenCollisionDump => |ctx| return try handleConnectionCollision(peer, ctx),
-        .KeepAliveReceived => return try handleKeepALiveReceived(peer),
+        .KeepAliveReceived => return try handleKeepAliveReceived(peer),
         // Start events are ignored
         .Start => return .keep,
         // TODO handle message checking error events
