@@ -19,6 +19,7 @@ const EventTag = enum(u8) {
     KeepAliveReceived = 7,
     DelayOpenTimerExpired = 8,
     TcpConnectionFailed = 9,
+    TcpConnectionSuccessful = 10,
 };
 
 pub const Event = union(EventTag) {
@@ -31,6 +32,7 @@ pub const Event = union(EventTag) {
     KeepAliveReceived: void,
     DelayOpenTimerExpired: void,
     TcpConnectionFailed: void,
+    TcpConnectionSuccessful: std.net.Stream,
 };
 
 const PostHandlerActionTag = enum(u8) {
@@ -41,6 +43,14 @@ const PostHandlerActionTag = enum(u8) {
 pub const PostHandlerAction = union(PostHandlerActionTag) {
     Keep: void,
     Transition: SessionState,
+
+    pub const keep: PostHandlerAction = .{ .Keep = {} };
+
+    pub fn transition(state: SessionState) PostHandlerAction {
+        return .{
+            .Transition = state,
+        };
+    }
 };
 
 // Event handler interface

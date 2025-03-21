@@ -79,11 +79,42 @@ pub const Session = struct {
         };
     }
 
+    pub fn killAllTimers(self: *Self) void {
+        self.connectionRetryTimer.cancel();
+        self.holdTimer.cancel();
+        self.keepAliveTimer.cancel();
+        self.delayOpenTimer.cancel();
+    }
+
     pub fn deinit(self: *Self) void {
         self.closeConnection();
     }
 
+    pub fn replacePeerConnection(self: *Self, connection: std.net.Stream) !void {
+        const currentPeerConnection = self.peerConnection;
+
+        self.peerConnection = connection;
+        currentPeerConnection.?.close();
+
+        if (self.peerConnectionThread != null) {
+            return;
+        }
+
+        const connContext: connections.ConnectionHandlerContext = .{ .peer = self.parent };
+        self.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
+            self.peerConnection.?.close();
+            self.peerConnectionThread.?.join();
+            self.peerConnection = null;
+            self.peerConnectionThread = null;
+
+            return err;
+        };
+    }
+
     pub fn startConnection(self: *Self) !void {
+        std.debug.assert(self.peerConnection == null);
+        std.debug.assert(self.peerConnectionThread == null);
+
         // Start Connection Thread
         const peerAddress = std.net.Address.parseIp(self.parent.sessionAddresses.peerAddress, 179) catch unreachable;
         const peerConnection = try std.net.tcpConnectToAddress(peerAddress);
