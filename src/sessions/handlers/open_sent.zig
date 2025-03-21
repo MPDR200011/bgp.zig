@@ -39,9 +39,14 @@ pub fn handleHoldTimerExpires(peer: *Peer) !PostHandlerAction {
     const msg: model.NotificationMessage = .{
         .errorKind = .HoldTimerExpired,
     };
-    session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
+    try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
 
     session.connectionRetryTimer.cancel();
+    session.closeConnection();
+    session.connectionRetryCount += 1;
+
+    return .transition(.IDLE);
+}
 }
 
 pub fn handleEvent(peer: *Peer, event: Event) !PostHandlerAction {
