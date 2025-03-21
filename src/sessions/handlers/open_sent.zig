@@ -60,6 +60,34 @@ fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
 
     return .transition(.ACTIVE);
 }
+
+fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
+    const session = &peer.sessionInfo;
+    session.mutex.lock();
+    defer session.mutex.lock();
+
+    std.debug.assert(session.delayOpenTimer.isActive());
+
+    session.connectionRetryTimer.cancel();
+    session.delayOpenTimer.cancel();
+
+    // TODO extract peer information from the message:
+    // - router ID
+    // - remote ASN
+    // - holdTimer
+    // - Internal/External connection
+    // - etc.
+    const peerHoldTimer = msg.holdTime;
+
+    const negotiatedHoldTimer = @min(peer.holdTime, peerHoldTimer);
+
+    const keepalive: model.BgpMessage = .{ .KEEPALIVE = .{} };
+    try session.messageEncoder.writeMessage(keepalive, session.peerConnection.?.writer().any());
+
+    try session.holdTimer.start(negotiatedHoldTimer);
+    try session.keepAliveTimer.start(negotiatedHoldTimer / 3);
+
+    return .transition(.OPEN_CONFIRM);
 }
 
 pub fn handleEvent(peer: *Peer, event: Event) !PostHandlerAction {
@@ -67,6 +95,7 @@ pub fn handleEvent(peer: *Peer, event: Event) !PostHandlerAction {
         .Stop => return try handleStop(peer),
         .HoldTimerExpired => return try handleHoldTimerExpires(peer),
         .TcpConnectionFailed => return try handleTcpFailed(peer),
+        .OpenReceived => |openMsg| return try handleOpenReceived(peer, openMsg),
         // Start events are ignored
         .Start => return .keep,
         // TODO handle message checking error events
