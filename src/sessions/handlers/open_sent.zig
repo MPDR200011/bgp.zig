@@ -103,6 +103,12 @@ fn handleConnectionCollision(peer: *Peer, ctx: CollisionContext) !PostHandlerAct
     session.mutex.lock();
     defer session.mutex.lock();
 
+    const msg: model.NotificationMessage = .{
+        .errorCode = .Cease,
+        .errorKind = .Default
+    };
+    try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
+
     try session.replacePeerConnection(ctx.newConnection);
 
     session.connectionRetryTimer.cancel();
