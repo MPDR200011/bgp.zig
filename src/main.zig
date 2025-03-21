@@ -66,7 +66,7 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
     const localAddrStr = try getAddrString(peerAddr, ctx.allocator);
     defer ctx.allocator.free(localAddrStr);
 
-    var peer = ctx.peerMap.get(PeerSessionAddresses{
+    _ = ctx.peerMap.get(PeerSessionAddresses{
         .localAddress = localAddrStr,
         .peerAddress = peerAddrStr,
     }) orelse {
@@ -87,17 +87,10 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
         },
     };
 
-    const event: fsm.Event = switch (message) {
+    _ = switch (message) {
         .OPEN => |openMessage| .{ .OpenReceived = openMessage },
         else => return,
     };
-
-    peer.sessionFSM.handleEvent(event) catch |err| {
-        std.log.err("Error handling event {s}: {}", .{ @tagName(event), err });
-    };
-
-    const connectionContext: connections.ConnectionHandlerContext = .{ .peer = peer };
-    _ = try std.Thread.spawn(.{}, connections.connectionHandler, .{connectionContext});
 }
 
 pub fn main() !void {

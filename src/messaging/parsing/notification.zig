@@ -1,30 +1,30 @@
 const std = @import("std");
 const model = @import("../model.zig");
 
-const NotificationParsingError = error{ InvalidErrorSubCode };
+const NotificationParsingError = error{ InvalidErrorSubCode, DataLengthMismatch };
 
 pub fn getErrorKindFromMessageValue(errorCode: model.ErrorCode, msgValue: u8) !model.ErrorKind {
-    return switch(errorCode) {
+    switch(errorCode) {
         .HeaderError => {
-            switch(msgValue) {
+            return switch(msgValue) {
                 1 => model.ErrorKind.ConnectionNotSynchronized,
                 2 => model.ErrorKind.BadMessageLength,
                 3 => model.ErrorKind.BadMessageType,
                 else => NotificationParsingError.InvalidErrorSubCode,
-            }
+            };
         },
         .OpenMessageError => {
-            switch(msgValue) {
+            return switch(msgValue) {
                 1 => model.ErrorKind.UnsupportedVersionNumber,
                 2 => model.ErrorKind.BadPeerAS,
                 3 => model.ErrorKind.BadBGPIdentifier,
                 4 => model.ErrorKind.UnsupportedOptionalParameter,
                 6 => model.ErrorKind.UnacceptableHoldTime,
                 else => NotificationParsingError.InvalidErrorSubCode,
-            }
+            };
         },
         .UpdateMessageError => {
-            switch (msgValue) {
+            return switch (msgValue) {
                 1 => model.ErrorKind.MalformedAttributeList,
                 2 => model.ErrorKind.UnrecognizedWellKnownAttribute,
                 3 => model.ErrorKind.MissingWellKnownAttribute,
@@ -36,18 +36,24 @@ pub fn getErrorKindFromMessageValue(errorCode: model.ErrorCode, msgValue: u8) !m
                 10 => model.ErrorKind.InvalidNetworkField,
                 11 => model.ErrorKind.MalformedAS_PATH,
                 else => NotificationParsingError.InvalidErrorSubCode,
-            }
+            };
         },
-        else => model.ErrorKind.Default
-    };
+        else => return model.ErrorKind.Default
+    }
 }
 
-pub fn readNotificationMessage(r: std.io.AnyReader, dataLength: usize) !model.NotificationMessage {
+pub fn readNotificationMessage(r: std.io.AnyReader, dataLength: usize, allocator: std.mem.Allocator) !model.NotificationMessage {
     const errorCode: model.ErrorCode = @enumFromInt(try r.readInt(u8, .big));
     const errorSubCode = try r.readInt(u8, .big);
 
-    const data: [dataLength]u8 = undefined;
-    try r.readAll(data);
+    const msg: model.NotificationMessage = try .init(errorCode, try getErrorKindFromMessageValue(errorCode, errorSubCode), dataLength, allocator);
+    if (dataLength > 0) {
+        std.debug.assert(msg.data != null);
+        const readBytes = try r.readAll(msg.data.?);
+        if (readBytes != dataLength) {
+            return NotificationParsingError.DataLengthMismatch;
+        }
+    }
 
-    return .{ .errorCode = errorCode, .errorKind = try getErrorKindFromMessageValue(errorCode, errorSubCode), .data=data };
+    return msg;
 }

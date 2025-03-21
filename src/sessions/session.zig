@@ -70,6 +70,8 @@ pub const Session = struct {
 
     messageEncoder: encoder.MessageEncoder,
 
+    allocator: std.mem.Allocator,
+
     pub fn init(parent: *Peer, alloc: std.mem.Allocator) Self {
         return .{
             .state = .IDLE,
@@ -83,6 +85,7 @@ pub const Session = struct {
             .peerConnection = null,
             .peerConnectionThread = null,
             .messageEncoder = .init(alloc),
+            .allocator = alloc,
         };
     }
 
@@ -95,6 +98,13 @@ pub const Session = struct {
 
     pub fn deinit(self: *Self) void {
         self.closeConnection();
+
+        self.messageEncoder.deinit();
+
+        self.connectionRetryTimer.deinit();
+        self.holdTimer.deinit();
+        self.keepAliveTimer.deinit();
+        self.delayOpenTimer.deinit();
     }
 
     pub fn replacePeerConnection(self: *Self, connection: std.net.Stream) !void {
@@ -105,7 +115,7 @@ pub const Session = struct {
         self.connectionState = .Open;
 
         self.peerConnection = connection;
-        const connContext: connections.ConnectionHandlerContext = .{ .peer = self.parent };
+        const connContext: connections.ConnectionHandlerContext = .{ .peer = self.parent, .allocator = self.allocator };
         self.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
             self.peerConnection.?.close();
             self.peerConnectionThread.?.join();
@@ -127,7 +137,7 @@ pub const Session = struct {
         const peerConnection = try std.net.tcpConnectToAddress(peerAddress);
 
         self.peerConnection = peerConnection;
-        const connContext: connections.ConnectionHandlerContext = .{ .peer = self.parent };
+        const connContext: connections.ConnectionHandlerContext = .{ .peer = self.parent, .allocator = self.allocator };
         self.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
             self.peerConnection.?.close();
             self.peerConnectionThread.?.join();

@@ -1,3 +1,7 @@
+const std = @import("std");
+
+const Allocator = std.mem.Allocator;
+
 pub const ParameterType = enum(u8) {};
 
 pub const Parameter = union(ParameterType) {};
@@ -44,9 +48,40 @@ pub const ErrorKind = enum(u8) {
 };
 
 pub const NotificationMessage = struct {
+    const Self = @This();
+
     errorCode: ErrorCode,
-    errorKind: ?ErrorKind,
-    data: []const u8,
+    errorKind: ErrorKind,
+    data: ?[]u8,
+
+    allocator: ?Allocator,
+
+    pub fn initNoData(errorCode: ErrorCode, errorKind: ErrorKind) Self {
+        return .{
+            .errorCode = errorCode,
+            .errorKind = errorKind,
+            .data = null,
+            .allocator = null,
+        };
+    }
+
+    pub fn init(errorCode: ErrorCode, errorKind: ErrorKind, dataLength: usize, allocator: Allocator) !Self {
+        const data = if (dataLength > 0) null else try allocator.alloc(u8, dataLength);
+
+        return .{
+            .errorCode = errorCode,
+            .errorKind = errorKind,
+            .data = data,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: Self) void {
+        if (self.data != null) {
+            std.debug.assert(self.allocator != null);
+            self.allocator.?.free(self.data.?);
+        }
+    }
 };
 
 pub const BgpMessageType = enum(u8) {

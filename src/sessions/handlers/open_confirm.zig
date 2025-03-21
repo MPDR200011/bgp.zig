@@ -16,10 +16,7 @@ fn handleStop(peer: *Peer) !PostHandlerAction {
     session.mutex.lock();
     defer session.mutex.lock();
 
-    const msg: model.NotificationMessage = .{
-        .errorCode = .Cease,
-        .errorKind = .Default
-    };
+    const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
 
     session.connectionRetryTimer.cancel();
@@ -38,10 +35,7 @@ fn handleHoldTimerExpires(peer: *Peer) !PostHandlerAction {
     session.mutex.lock();
     defer session.mutex.lock();
 
-    const msg: model.NotificationMessage = .{
-        .errorCode = .HoldTimerExpired,
-        .errorKind = .Default
-    };
+    const msg: model.NotificationMessage = .initNoData(.HoldTimerExpired, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
 
     session.connectionRetryTimer.cancel();
@@ -87,10 +81,7 @@ fn handleConnectionCollision(peer: *Peer, ctx: CollisionContext) !PostHandlerAct
     session.mutex.lock();
     defer session.mutex.lock();
 
-    const msg: model.NotificationMessage = .{
-        .errorCode = .Cease,
-        .errorKind = .Default
-    };
+    const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
 
     try session.replacePeerConnection(ctx.newConnection);
@@ -135,10 +126,7 @@ fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
     session.mutex.lock();
     defer session.mutex.lock();
 
-    const msg: model.NotificationMessage = .{
-        .errorCode = .FSMError,
-        .errorKind = .Default
-    };
+    const msg: model.NotificationMessage = .initNoData(.FSMError, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
 
     session.killAllTimers();
