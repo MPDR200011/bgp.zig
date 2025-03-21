@@ -19,12 +19,12 @@ pub const ErrorCode = enum(u8) {
 };
 
 pub const ErrorKind = enum(u8) {
-
+    Default = 0,
 };
 
 pub const NotificationMessage = struct {
     errorCode: ErrorCode,
-    errorKind: ErrorKind,
+    errorKind: ?ErrorKind,
     // TODO data: []const u8,
 };
 

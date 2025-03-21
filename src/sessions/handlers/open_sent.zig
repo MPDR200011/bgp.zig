@@ -16,9 +16,10 @@ pub fn handleStop(peer: *Peer) !PostHandlerAction {
     defer session.mutex.lock();
 
     const msg: model.NotificationMessage = .{
-        .errorKind = .Cease,
+        .errorCode = .Cease,
+        .errorKind = .Default
     };
-    session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
+    try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
 
     session.connectionRetryTimer.cancel();
     session.closeConnection();
@@ -37,7 +38,8 @@ pub fn handleHoldTimerExpires(peer: *Peer) !PostHandlerAction {
     defer session.mutex.lock();
 
     const msg: model.NotificationMessage = .{
-        .errorKind = .HoldTimerExpired,
+        .errorCode = .HoldTimerExpired,
+        .errorKind = .Default
     };
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
 

@@ -2,8 +2,13 @@ const std = @import("std");
 const consts = @import("../consts.zig");
 const model = @import("../model.zig");
 
-fn getErrorSubCodeValue(errorKind: model.ErrorKind) u8 {
-    return switch(errorKind) {
+fn getErrorSubCodeValue(errorKind: ?model.ErrorKind) u8 {
+    if (errorKind == null) {
+        return 0;
+    }
+
+    return switch(errorKind.?) {
+        else => 0,
     };
 }
 

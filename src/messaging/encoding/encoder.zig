@@ -44,6 +44,6 @@ pub const MessageEncoder = struct {
         }
 
         try messageHeader.writeHeader(messageWriter, @intCast(bodyBuffer.items.len), msg);
-        try messageWriter.write(bodyBuffer);
+        _ = try messageWriter.writeAll(bodyBuffer.items);
     }
 };
