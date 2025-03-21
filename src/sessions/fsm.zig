@@ -5,6 +5,7 @@ const idleHandler = @import("handlers/idle.zig");
 const connectHandler = @import("handlers/connect.zig");
 const activeHandler = @import("handlers/active.zig");
 const openSentHandler = @import("handlers/open_sent.zig");
+const openConfirmHandler = @import("handlers/open_confirm.zig");
 
 const Session = sessionLib.Session;
 const Peer = sessionLib.Peer;
@@ -127,7 +128,8 @@ pub const SessionFSM = struct {
             .CONNECT => try connectHandler.handleEvent(self.parent, event),
             .ACTIVE => try activeHandler.handleEvent(self.parent, event),
             .OPEN_SENT => try openSentHandler.handleEvent(self.parent, event),
-            else => .{ .Keep = {} },
+            .OPEN_CONFIRM => try openConfirmHandler.handleEvent(self.parent, event),
+            else => .keep,
         };
 
         switch (nextAction) {
