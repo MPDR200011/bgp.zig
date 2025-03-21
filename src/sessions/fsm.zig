@@ -22,6 +22,12 @@ const EventTag = enum(u8) {
     DelayOpenTimerExpired = 8,
     TcpConnectionFailed = 9,
     TcpConnectionSuccessful = 10,
+    OpenCollisionDump = 11,
+};
+
+pub const CollisionContext = struct {
+    newConnection: std.net.Stream,
+    openMsg: messageModel.OpenMessage
 };
 
 pub const Event = union(EventTag) {
@@ -35,6 +41,7 @@ pub const Event = union(EventTag) {
     DelayOpenTimerExpired: void,
     TcpConnectionFailed: void,
     TcpConnectionSuccessful: std.net.Stream,
+    OpenCollisionDump: CollisionContext,
 };
 
 const PostHandlerActionTag = enum(u8) {
