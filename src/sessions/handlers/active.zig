@@ -1,19 +1,16 @@
 const std = @import("std");
 const connections = @import("../connections.zig");
 const sessionLib = @import("../session.zig");
-const fsmLib = @import("../fsm.zig");
 const model = @import("../../messaging/model.zig");
 
 const Session = sessionLib.Session;
 const Peer = sessionLib.Peer;
 
-const PostHandlerAction = fsmLib.PostHandlerAction;
-const Event = fsmLib.Event;
+const PostHandlerAction = sessionLib.PostHandlerAction;
+const Event = sessionLib.Event;
 
 pub fn handleStop(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     // TODO: If the DelayOpenTimer is running and the
     // SendNOTIFICATIONwithoutOPEN session attribute is set, the
@@ -31,8 +28,6 @@ pub fn handleStop(peer: *Peer) !PostHandlerAction {
 
 fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     try session.connectionRetryTimer.reschedule();
     session.startConnection() catch |err| {
@@ -68,8 +63,6 @@ fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
 
 fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     session.connectionRetryTimer.cancel();
     session.delayOpenTimer.cancel();
@@ -83,8 +76,6 @@ fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
 
 fn handleNewTcpConnection(peer: *Peer, connection: std.net.Stream) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     try session.replacePeerConnection(connection);
 
@@ -106,8 +97,6 @@ fn handleNewTcpConnection(peer: *Peer, connection: std.net.Stream) !PostHandlerA
 
 fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     try session.connectionRetryTimer.reschedule();
     session.delayOpenTimer.cancel();
@@ -121,8 +110,6 @@ fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
 
 fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     std.debug.assert(session.delayOpenTimer.isActive());
 
@@ -148,8 +135,6 @@ fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
 
 pub fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     session.killAllTimers();
 

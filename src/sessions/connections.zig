@@ -1,7 +1,6 @@
 const std = @import("std");
 const net = std.net;
 const session = @import("session.zig");
-const fsm = @import("fsm.zig");
 
 const model = @import("../messaging/model.zig");
 const consts = @import("../messaging/consts.zig");
@@ -56,7 +55,7 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
             }
         }
 
-        const event: fsm.Event = switch (message) {
+        const event: session.Event = switch (message) {
             .OPEN => |openMessage| .{ .OpenReceived = openMessage },
             .KEEPALIVE => .{ .KeepAliveReceived = {} },
             .UPDATE => |msg| .{ .UpdateReceived = msg },

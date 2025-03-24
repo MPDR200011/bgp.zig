@@ -1,20 +1,17 @@
 const std = @import("std");
 const connections = @import("../connections.zig");
 const sessionLib = @import("../session.zig");
-const fsmLib = @import("../fsm.zig");
 const model = @import("../../messaging/model.zig");
 
 const Session = sessionLib.Session;
 const Peer = sessionLib.Peer;
 
-const PostHandlerAction = fsmLib.PostHandlerAction;
-const Event = fsmLib.Event;
-const CollisionContext = fsmLib.CollisionContext;
+const PostHandlerAction = sessionLib.PostHandlerAction;
+const Event = sessionLib.Event;
+const CollisionContext = sessionLib.CollisionContext;
 
 fn handleStop(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
@@ -35,8 +32,6 @@ fn handleStop(peer: *Peer) !PostHandlerAction {
 
 fn handleHoldTimerExpires(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     const msg: model.NotificationMessage = .initNoData(.HoldTimerExpired, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
@@ -52,8 +47,6 @@ fn handleHoldTimerExpires(peer: *Peer) !PostHandlerAction {
 
 fn handleKeepAliveTimerExpires(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     try session.messageEncoder.writeMessage(.{.KEEPALIVE = .{}}, session.peerConnection.?.writer().any());
 
@@ -65,8 +58,6 @@ fn handleKeepAliveTimerExpires(peer: *Peer) !PostHandlerAction {
 
 fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     session.connectionRetryTimer.cancel();
     session.closeConnection();
@@ -82,8 +73,6 @@ fn handleConnectionCollision(peer: *Peer, ctx: CollisionContext) !PostHandlerAct
     // used by the session, and handling the OPEN message as if I was in the connect state.
 
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
@@ -117,8 +106,6 @@ fn handleConnectionCollision(peer: *Peer, ctx: CollisionContext) !PostHandlerAct
 
 fn handleKeepAliveReceived(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     try session.holdTimer.reschedule();
 
@@ -127,8 +114,6 @@ fn handleKeepAliveReceived(peer: *Peer) !PostHandlerAction {
 
 fn handleUpdateReceived(peer: *Peer, msg: model.UpdateMessage) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     _ = msg;
 
@@ -139,8 +124,6 @@ fn handleUpdateReceived(peer: *Peer, msg: model.UpdateMessage) !PostHandlerActio
 
 fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     const msg: model.NotificationMessage = .initNoData(.FSMError, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());

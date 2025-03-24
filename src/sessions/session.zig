@@ -1,9 +1,16 @@
 const std = @import("std");
 const timer = @import("../utils/timer.zig");
-const fsm = @import("fsm.zig");
-const model = @import("../messaging/model.zig");
+
 const connections = @import("connections.zig");
 const encoder = @import("../messaging/encoding/encoder.zig");
+const messageModel = @import("../messaging/model.zig");
+const idleHandler = @import("handlers/idle.zig");
+const connectHandler = @import("handlers/connect.zig");
+const activeHandler = @import("handlers/active.zig");
+const openSentHandler = @import("handlers/open_sent.zig");
+const openConfirmHandler = @import("handlers/open_confirm.zig");
+const establishedHandler = @import("handlers/established.zig");
+
 
 const Timer = timer.Timer;
 
@@ -20,6 +27,60 @@ pub const Mode = enum(u8) {
     PASSIVE = 1,
     ACTIVE = 2,
 };
+
+const EventTag = enum(u8) {
+    Start = 1,
+    Stop = 2,
+    OpenReceived = 3,
+    ConnectionRetryTimerExpired = 4,
+    HoldTimerExpired = 5,
+    KeepAliveTimerExpired = 6,
+    KeepAliveReceived = 7,
+    DelayOpenTimerExpired = 8,
+    TcpConnectionFailed = 9,
+    TcpConnectionSuccessful = 10,
+    OpenCollisionDump = 11,
+    UpdateReceived = 12,
+};
+
+pub const CollisionContext = struct {
+    newConnection: std.net.Stream,
+    openMsg: messageModel.OpenMessage
+};
+
+pub const Event = union(EventTag) {
+    Start: void,
+    Stop: void,
+    OpenReceived: messageModel.OpenMessage,
+    ConnectionRetryTimerExpired: void,
+    HoldTimerExpired: void,
+    KeepAliveTimerExpired: void,
+    KeepAliveReceived: void,
+    DelayOpenTimerExpired: void,
+    TcpConnectionFailed: void,
+    TcpConnectionSuccessful: std.net.Stream,
+    OpenCollisionDump: CollisionContext,
+    UpdateReceived: messageModel.UpdateMessage,
+};
+
+const PostHandlerActionTag = enum(u8) {
+    Keep = 1,
+    Transition = 2,
+};
+
+pub const PostHandlerAction = union(PostHandlerActionTag) {
+    Keep: void,
+    Transition: SessionState,
+
+    pub const keep: PostHandlerAction = .{ .Keep = {} };
+
+    pub fn transition(state: SessionState) PostHandlerAction {
+        return .{
+            .Transition = state,
+        };
+    }
+};
+
 
 fn sendConnectionRetryEvent(p: *Peer) void {
     p.lock();
@@ -106,7 +167,7 @@ pub const Session = struct {
         };
     }
 
-    pub fn extractInfoFromOpenMessage(self: *Self, msg: model.OpenMessage) void {
+    pub fn extractInfoFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) void {
         self.info = .{
             .peerId = msg.peerRouterId,
             .peerAsn = msg.asNumber,
@@ -182,6 +243,38 @@ pub const Session = struct {
         self.peerConnection = null;
         self.peerConnectionThread = null;
     }
+
+    fn switchState(self: *Self, nextState: SessionState) !void {
+        self.parent.sessionInfo.mutex.lock();
+        defer self.parent.sessionInfo.mutex.unlock();
+
+        std.log.info("Session switching state: {s} => {s}", .{ @tagName(self.parent.sessionInfo.state), @tagName(nextState) });
+
+        self.parent.sessionInfo.state = nextState;
+
+        switch (nextState) {
+            else => return,
+        }
+    }
+
+    pub fn handleEvent(self: *Self, event: Event) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        const nextAction: PostHandlerAction = switch (self.parent.session.state) {
+            .IDLE => try idleHandler.handleEvent(self.parent, event),
+            .CONNECT => try connectHandler.handleEvent(self.parent, event),
+            .ACTIVE => try activeHandler.handleEvent(self.parent, event),
+            .OPEN_SENT => try openSentHandler.handleEvent(self.parent, event),
+            .OPEN_CONFIRM => try openConfirmHandler.handleEvent(self.parent, event),
+            .ESTABLISHED => try establishedHandler.handleEvent(self.parent, event),
+        };
+
+        switch (nextAction) {
+            .Transition => |nextState| try self.switchState(nextState),
+            .Keep => return,
+        }
+    }
 };
 
 pub const PeerSessionAddresses = struct {
@@ -202,6 +295,8 @@ pub const PeerConfig = struct {
 pub const Peer = struct {
     const Self = @This();
 
+    parent: *Peer,
+
     localAsn: u16,
     holdTime: u16,
     localRouterId: u32,
@@ -210,8 +305,7 @@ pub const Peer = struct {
     delayOpen_ms: u32 = 0,
 
     sessionAddresses: PeerSessionAddresses,
-    sessionInfo: Session,
-    sessionFSM: fsm.SessionFSM,
+    session: Session,
 
     mutex: std.Thread.Mutex,
 
@@ -238,3 +332,4 @@ pub const Peer = struct {
         self.mutex.unlock();
     }
 };
+

@@ -1,19 +1,16 @@
 const std = @import("std");
 const connections = @import("../connections.zig");
 const sessionLib = @import("../session.zig");
-const fsmLib = @import("../fsm.zig");
 const model = @import("../../messaging/model.zig");
 
 const Session = sessionLib.Session;
 const Peer = sessionLib.Peer;
 
-const PostHandlerAction = fsmLib.PostHandlerAction;
-const Event = fsmLib.Event;
+const PostHandlerAction = sessionLib.PostHandlerAction;
+const Event = sessionLib.Event;
 
 fn handleStop(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     session.closeConnection();
     session.connectionRetryCount = 0;
@@ -24,8 +21,6 @@ fn handleStop(peer: *Peer) !PostHandlerAction {
 
 fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     session.closeConnection();
 
@@ -61,8 +56,6 @@ fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
 
 fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     const openMsg: model.BgpMessage = .{ .OPEN = .{ .version = 4, .asNumber = peer.localAsn, .holdTime = peer.holdTime, .peerRouterId = 0, .parameters = null } };
     try session.messageEncoder.writeMessage(openMsg, session.peerConnection.?.writer().any());
@@ -73,8 +66,6 @@ fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
 
 fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     if (session.delayOpenTimer.isActive()) {
         try session.connectionRetryTimer.reschedule();
@@ -94,8 +85,6 @@ fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
 
 fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     std.debug.assert(session.delayOpenTimer.isActive());
 
@@ -122,8 +111,6 @@ fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
 
 pub fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
     const session = &peer.sessionInfo;
-    session.mutex.lock();
-    defer session.mutex.lock();
 
     session.connectionRetryTimer.cancel();
     session.delayOpenTimer.cancel();

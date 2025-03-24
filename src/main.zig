@@ -6,7 +6,6 @@ const process = std.process;
 
 const Allocator = std.mem.Allocator;
 
-const fsm = @import("sessions/fsm.zig");
 const session = @import("sessions/session.zig");
 const connections = @import("sessions/connections.zig");
 
@@ -102,13 +101,13 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
         peer.lock();
         defer peer.unlock();
 
-        if (peer.sessionInfo.state != .OPEN_CONFIRM) {
+        if (peer.session.state != .OPEN_CONFIRM) {
             break :collisionDetection;
         }
 
-        if (ctx.localConfig.routerId < peer.sessionInfo.info.?.peerId) {
+        if (ctx.localConfig.routerId < peer.session.info.?.peerId) {
             // Local ID is lower
-            try peer.sessionFSM.handleEvent(.{ .OpenCollisionDump = .{.openMsg = openMessage, .newConnection = ctx.conn.stream}});
+            try peer.session.handleEvent(.{ .OpenCollisionDump = .{.openMsg = openMessage, .newConnection = ctx.conn.stream}});
         } else {
             ctx.conn.stream.close();
         }
@@ -167,6 +166,11 @@ pub fn main() !void {
         process.exit(1);
     };
 
+    const localConfig: DeviceConfig = .{
+        .asn = 0,
+        .routerId = 1,
+    };
+
     var peerMap = PeerMap.init(gpa);
     defer {
         var it = peerMap.valueIterator();
@@ -203,7 +207,7 @@ pub fn main() !void {
 
     std.log.info("Connection received from {s}", .{peerAddrStr});
 
-    const acceptContext: AcceptContext = .{ .conn = client, .peerMap = &peerMap, .allocator = gpa };
+    const acceptContext: AcceptContext = .{ .conn = client, .peerMap = &peerMap, .allocator = gpa, .localConfig = localConfig };
     var acceptThread = try std.Thread.spawn(.{}, acceptHandler, .{acceptContext});
     acceptThread.join();
 }
