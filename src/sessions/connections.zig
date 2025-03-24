@@ -17,11 +17,11 @@ pub const ConnectionHandlerContext = struct {
 };
 
 pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
-    if (ctx.peer.sessionInfo.peerConnection == null) {
+    if (ctx.peer.session.peerConnection == null) {
         std.log.info("There is not peer connection active right now.", .{});
         return;
     }
-    const clientReader = ctx.peer.sessionInfo.peerConnection.?.reader().any();
+    const clientReader = ctx.peer.session.peerConnection.?.reader().any();
 
     // TODO: this guy will need to know if the connection teardown is graceful or not,
     // possibly a "graceful" flag in the session struct?
@@ -65,11 +65,11 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
             },
         };
 
-        ctx.peer.sessionFSM.handleEvent(event) catch |err| {
+        ctx.peer.session.handleEvent(event) catch |err| {
             std.log.err("Error handling event {s}: {}", .{ @tagName(event), err });
             break :connection;
         };
     }
 
-    ctx.peer.sessionInfo.peerConnection.?.close();
+    ctx.peer.session.peerConnection.?.close();
 }

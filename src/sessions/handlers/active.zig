@@ -10,7 +10,7 @@ const PostHandlerAction = sessionLib.PostHandlerAction;
 const Event = sessionLib.Event;
 
 pub fn handleStop(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     // TODO: If the DelayOpenTimer is running and the
     // SendNOTIFICATIONwithoutOPEN session attribute is set, the
@@ -27,7 +27,7 @@ pub fn handleStop(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     try session.connectionRetryTimer.reschedule();
     session.startConnection() catch |err| {
@@ -62,7 +62,7 @@ fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     session.connectionRetryTimer.cancel();
     session.delayOpenTimer.cancel();
@@ -75,7 +75,7 @@ fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleNewTcpConnection(peer: *Peer, connection: std.net.Stream) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     try session.replacePeerConnection(connection);
 
@@ -96,7 +96,7 @@ fn handleNewTcpConnection(peer: *Peer, connection: std.net.Stream) !PostHandlerA
 }
 
 fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     try session.connectionRetryTimer.reschedule();
     session.delayOpenTimer.cancel();
@@ -109,7 +109,7 @@ fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     std.debug.assert(session.delayOpenTimer.isActive());
 
@@ -134,7 +134,7 @@ fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
 }
 
 pub fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     session.killAllTimers();
 

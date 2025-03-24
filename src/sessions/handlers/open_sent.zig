@@ -11,7 +11,7 @@ const Event = sessionLib.Event;
 const CollisionContext = sessionLib.CollisionContext;
 
 pub fn handleStop(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
@@ -28,7 +28,7 @@ pub fn handleStop(peer: *Peer) !PostHandlerAction {
 }
 
 pub fn handleHoldTimerExpires(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     const msg: model.NotificationMessage = .initNoData(.HoldTimerExpired, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
@@ -41,7 +41,7 @@ pub fn handleHoldTimerExpires(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     session.closeConnection();
 
@@ -52,7 +52,7 @@ fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     std.debug.assert(session.delayOpenTimer.isActive());
 
@@ -79,7 +79,7 @@ fn handleConnectionCollision(peer: *Peer, ctx: CollisionContext) !PostHandlerAct
     // However I'm choosing to just reuse the current FSM, replacing the TCP stream
     // used by the session, and handling the OPEN message as if I was in the connect state.
 
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
@@ -112,7 +112,7 @@ fn handleConnectionCollision(peer: *Peer, ctx: CollisionContext) !PostHandlerAct
 }
 
 pub fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     const msg: model.NotificationMessage = .initNoData(.FSMError, .Default);
     try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());

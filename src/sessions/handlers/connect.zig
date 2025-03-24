@@ -10,7 +10,7 @@ const PostHandlerAction = sessionLib.PostHandlerAction;
 const Event = sessionLib.Event;
 
 fn handleStop(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     session.closeConnection();
     session.connectionRetryCount = 0;
@@ -20,7 +20,7 @@ fn handleStop(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     session.closeConnection();
 
@@ -55,7 +55,7 @@ fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     const openMsg: model.BgpMessage = .{ .OPEN = .{ .version = 4, .asNumber = peer.localAsn, .holdTime = peer.holdTime, .peerRouterId = 0, .parameters = null } };
     try session.messageEncoder.writeMessage(openMsg, session.peerConnection.?.writer().any());
@@ -65,7 +65,7 @@ fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     if (session.delayOpenTimer.isActive()) {
         try session.connectionRetryTimer.reschedule();
@@ -84,7 +84,7 @@ fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
 }
 
 fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     std.debug.assert(session.delayOpenTimer.isActive());
 
@@ -110,7 +110,7 @@ fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
 }
 
 pub fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
-    const session = &peer.sessionInfo;
+    const session = &peer.session;
 
     session.connectionRetryTimer.cancel();
     session.delayOpenTimer.cancel();

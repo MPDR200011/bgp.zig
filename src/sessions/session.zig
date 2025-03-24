@@ -85,7 +85,7 @@ pub const PostHandlerAction = union(PostHandlerActionTag) {
 fn sendConnectionRetryEvent(p: *Peer) void {
     p.lock();
     defer p.unlock();
-    p.sessionFSM.handleEvent(.{ .ConnectionRetryTimerExpired = {} }) catch {
+    p.session.handleEvent(.{ .ConnectionRetryTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
@@ -93,7 +93,7 @@ fn sendConnectionRetryEvent(p: *Peer) void {
 fn sendKeepAliveEvent(p: *Peer) void {
     p.lock();
     defer p.unlock();
-    p.sessionFSM.handleEvent(.{ .KeepAliveTimerExpired = {} }) catch {
+    p.session.handleEvent(.{ .KeepAliveTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
@@ -101,7 +101,7 @@ fn sendKeepAliveEvent(p: *Peer) void {
 fn sendHoldTimerEvent(p: *Peer) void {
     p.lock();
     defer p.unlock();
-    p.sessionFSM.handleEvent(.{ .HoldTimerExpired = {} }) catch {
+    p.session.handleEvent(.{ .HoldTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
@@ -109,7 +109,7 @@ fn sendHoldTimerEvent(p: *Peer) void {
 fn sendDelayOpenEvent(p: *Peer) void {
     p.lock();
     defer p.unlock();
-    p.sessionFSM.handleEvent(.{ .DelayOpenTimerExpired = {} }) catch {
+    p.session.handleEvent(.{ .DelayOpenTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
@@ -245,12 +245,12 @@ pub const Session = struct {
     }
 
     fn switchState(self: *Self, nextState: SessionState) !void {
-        self.parent.sessionInfo.mutex.lock();
-        defer self.parent.sessionInfo.mutex.unlock();
+        self.parent.session.mutex.lock();
+        defer self.parent.session.mutex.unlock();
 
-        std.log.info("Session switching state: {s} => {s}", .{ @tagName(self.parent.sessionInfo.state), @tagName(nextState) });
+        std.log.info("Session switching state: {s} => {s}", .{ @tagName(self.parent.session.state), @tagName(nextState) });
 
-        self.parent.sessionInfo.state = nextState;
+        self.parent.session.state = nextState;
 
         switch (nextState) {
             else => return,
@@ -295,8 +295,6 @@ pub const PeerConfig = struct {
 pub const Peer = struct {
     const Self = @This();
 
-    parent: *Peer,
-
     localAsn: u16,
     holdTime: u16,
     localRouterId: u32,
@@ -318,8 +316,7 @@ pub const Peer = struct {
             .delayOpen = cfg.delayOpen,
             .delayOpen_ms = cfg.delayOpen_ms,
             .sessionAddresses = cfg.sessionAddresses,
-            .sessionInfo = .init(self, alloc),
-            .sessionFSM = .init(self),
+            .session = .init(self, alloc),
             .mutex = .{},
         };
     }
