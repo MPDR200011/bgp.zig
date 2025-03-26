@@ -9,19 +9,19 @@ const openReader = @import("../messaging/parsing/open.zig");
 const notificationReader = @import("../messaging/parsing/notification.zig");
 const bgpEncoding = @import("../messaging/encoding/encoder.zig");
 
-const Peer = session.Peer;
+const Session = session.Session;
 
 pub const ConnectionHandlerContext = struct {
-    peer: *Peer,
+    session: *Session,
     allocator: std.mem.Allocator,
 };
 
 pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
-    if (ctx.peer.session.peerConnection == null) {
+    const connection = ctx.session.peerConnection orelse {
         std.log.info("There is not peer connection active right now.", .{});
         return;
-    }
-    const clientReader = ctx.peer.session.peerConnection.?.reader().any();
+    };
+    const clientReader = connection.reader().any();
 
     // TODO: this guy will need to know if the connection teardown is graceful or not,
     // possibly a "graceful" flag in the session struct?
@@ -65,11 +65,13 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
             },
         };
 
-        ctx.peer.session.handleEvent(event) catch |err| {
+        ctx.session.parent.lock();
+        defer ctx.session.parent.unlock();
+        ctx.session.handleEvent(event) catch |err| {
             std.log.err("Error handling event {s}: {}", .{ @tagName(event), err });
             break :connection;
         };
     }
 
-    ctx.peer.session.peerConnection.?.close();
+    connection.close();
 }

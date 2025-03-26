@@ -41,6 +41,7 @@ const EventTag = enum(u8) {
     TcpConnectionSuccessful = 10,
     OpenCollisionDump = 11,
     UpdateReceived = 12,
+    NotificationReceived = 13,
 };
 
 pub const CollisionContext = struct {
@@ -61,6 +62,7 @@ pub const Event = union(EventTag) {
     TcpConnectionSuccessful: std.net.Stream,
     OpenCollisionDump: CollisionContext,
     UpdateReceived: messageModel.UpdateMessage,
+    NotificationReceived: messageModel.NotificationMessage,
 };
 
 const PostHandlerActionTag = enum(u8) {
@@ -119,6 +121,53 @@ pub const ConnectionState = enum(u8) {
     Closing = 2,
 };
 
+const StartConnContext = struct {
+    session: *Session,
+    allocator: std.mem.Allocator
+};
+
+fn connectionStartThread(ctx: StartConnContext) !void {
+    std.debug.assert(ctx.session.peerConnection == null);
+    std.debug.assert(ctx.session.peerConnectionThread == null);
+
+    const peerAddress = std.net.Address.parseIp(ctx.session.parent.sessionAddresses.peerAddress, 179) catch unreachable;
+    const peerConnection = std.net.tcpConnectToAddress(peerAddress) catch |err| {
+        std.log.err("Failed to establish TCP connection with peer: {}", .{err});
+
+        ctx.session.connectionState = .Closing;
+
+        ctx.session.peerConnection.?.close();
+        ctx.session.peerConnectionThread.?.join();
+        ctx.session.peerConnectionThread = null;
+        ctx.session.peerConnection = null;
+
+        try ctx.session.handleEvent(.{ .TcpConnectionFailed = {} });
+
+        return err;
+    };
+
+    ctx.session.connectionState = .Open;
+
+    ctx.session.peerConnection = peerConnection;
+    const connContext: connections.ConnectionHandlerContext = .{ .session = ctx.session, .allocator = ctx.allocator };
+    ctx.session.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
+        std.log.err("Failed to start connection connection thread: {}", .{err});
+
+        ctx.session.connectionState = .Closing;
+
+        ctx.session.peerConnection.?.close();
+        ctx.session.peerConnectionThread.?.join();
+        ctx.session.peerConnectionThread = null;
+        ctx.session.peerConnection = null;
+
+        try ctx.session.handleEvent(.{ .TcpConnectionFailed = {} });
+
+        return err;
+    };
+
+    try ctx.session.handleEvent(.{ .TcpConnectionSuccessful = ctx.session.peerConnection orelse unreachable });
+}
+
 pub const Session = struct {
 
     const Info = struct {
@@ -145,6 +194,8 @@ pub const Session = struct {
     peerConnection: ?std.net.Stream,
     peerConnectionThread: ?std.Thread,
 
+    connectionStartThread: ?std.Thread,
+
     messageEncoder: encoder.MessageEncoder,
 
     allocator: std.mem.Allocator,
@@ -162,9 +213,31 @@ pub const Session = struct {
             .connectionState = .Closing,
             .peerConnection = null,
             .peerConnectionThread = null,
+            .connectionStartThread = null,
             .messageEncoder = .init(alloc),
             .allocator = alloc,
         };
+    }
+
+    pub fn releaseResources(self: *Self) void {
+        self.info = null;
+
+        // TODO might want to release Adj Ribs in this spot?
+    }
+
+    pub fn createOpenMessage(self: *Self, holdTimerValue: u16) messageModel.OpenMessage {
+        return .{ .version = 4, .asNumber = self.parent.localAsn, .holdTime = holdTimerValue, .peerRouterId = self.parent.localRouterId, .parameters = null };
+    }
+
+    pub fn sendMessage(self: *Self, msg: messageModel.BgpMessage) !void {
+        std.debug.assert(self.peerConnection != null);
+        const connection = self.peerConnection orelse unreachable;
+
+        try self.messageEncoder.writeMessage(msg, connection.writer().any());
+
+        if (msg == .UPDATE) {
+            try self.keepAliveTimer.reschedule();
+        }
     }
 
     pub fn extractInfoFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) void {
@@ -182,6 +255,7 @@ pub const Session = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.releaseResources();
         self.closeConnection();
 
         self.messageEncoder.deinit();
@@ -190,49 +264,31 @@ pub const Session = struct {
         self.holdTimer.deinit();
         self.keepAliveTimer.deinit();
         self.delayOpenTimer.deinit();
+
     }
 
-    pub fn replacePeerConnection(self: *Self, connection: std.net.Stream) !void {
-        self.connectionState = .Closing;
-        self.peerConnection.?.close();
-        self.peerConnectionThread.?.join();
+    pub fn setPeerConnection(self: *Self, connection: std.net.Stream) !void {
+        std.debug.assert(self.peerConnection == null);
+        std.debug.assert(self.peerConnectionThread == null);
 
         self.connectionState = .Open;
-
         self.peerConnection = connection;
-        const connContext: connections.ConnectionHandlerContext = .{ .peer = self.parent, .allocator = self.allocator };
+        const connContext: connections.ConnectionHandlerContext = .{ .session =  self, .allocator = self.allocator };
         self.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
+            self.connectionState = .Closing;
+
             self.peerConnection.?.close();
             self.peerConnectionThread.?.join();
             self.peerConnection = null;
             self.peerConnectionThread = null;
 
-            self.connectionState = .Closing;
             return err;
         };
     }
 
     pub fn startConnection(self: *Self) !void {
-        std.debug.assert(self.peerConnection == null);
-        std.debug.assert(self.peerConnectionThread == null);
-
-        self.connectionState = .Open;
-
-        const peerAddress = std.net.Address.parseIp(self.parent.sessionAddresses.peerAddress, 179) catch unreachable;
-        const peerConnection = try std.net.tcpConnectToAddress(peerAddress);
-
-        self.peerConnection = peerConnection;
-        const connContext: connections.ConnectionHandlerContext = .{ .peer = self.parent, .allocator = self.allocator };
-        self.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
-            self.peerConnection.?.close();
-            self.peerConnectionThread.?.join();
-            self.peerConnection = null;
-            self.peerConnectionThread = null;
-
-            self.connectionState = .Closing;
-
-            return err;
-        };
+        const startContext: StartConnContext = .{ .session = self, .allocator = self.allocator };
+        self.connectionStartThread = try std.Thread.spawn(.{}, connectionStartThread, .{startContext});
     }
 
     pub fn closeConnection(self: *Self) void {
@@ -261,13 +317,13 @@ pub const Session = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        const nextAction: PostHandlerAction = switch (self.parent.session.state) {
-            .IDLE => try idleHandler.handleEvent(self.parent, event),
-            .CONNECT => try connectHandler.handleEvent(self.parent, event),
-            .ACTIVE => try activeHandler.handleEvent(self.parent, event),
-            .OPEN_SENT => try openSentHandler.handleEvent(self.parent, event),
-            .OPEN_CONFIRM => try openConfirmHandler.handleEvent(self.parent, event),
-            .ESTABLISHED => try establishedHandler.handleEvent(self.parent, event),
+        const nextAction: PostHandlerAction = switch (self.state) {
+            .IDLE => try idleHandler.handleEvent(self, event),
+            .CONNECT => try connectHandler.handleEvent(self, event),
+            .ACTIVE => try activeHandler.handleEvent(self, event),
+            .OPEN_SENT => try openSentHandler.handleEvent(self, event),
+            .OPEN_CONFIRM => try openConfirmHandler.handleEvent(self, event),
+            .ESTABLISHED => try establishedHandler.handleEvent(self, event),
         };
 
         switch (nextAction) {

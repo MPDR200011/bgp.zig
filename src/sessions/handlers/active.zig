@@ -4,13 +4,11 @@ const sessionLib = @import("../session.zig");
 const model = @import("../../messaging/model.zig");
 
 const Session = sessionLib.Session;
-const Peer = sessionLib.Peer;
 
 const PostHandlerAction = sessionLib.PostHandlerAction;
 const Event = sessionLib.Event;
 
-pub fn handleStop(peer: *Peer) !PostHandlerAction {
-    const session = &peer.session;
+pub fn handleStop(session: *Session) !PostHandlerAction {
 
     // TODO: If the DelayOpenTimer is running and the
     // SendNOTIFICATIONwithoutOPEN session attribute is set, the
@@ -21,85 +19,49 @@ pub fn handleStop(peer: *Peer) !PostHandlerAction {
     session.connectionRetryCount = 0;
     session.connectionRetryTimer.cancel();
 
-    return .{
-        .Transition = .IDLE,
-    };
+    return .transition(.IDLE);
 }
 
-fn handleRetryExpired(peer: *Peer) !PostHandlerAction {
-    const session = &peer.session;
-
+fn handleRetryExpired(session: *Session) !PostHandlerAction {
     try session.connectionRetryTimer.reschedule();
-    session.startConnection() catch |err| {
-        std.log.err("Error attempting to start connection to peer: {}", .{err});
 
-        if (session.delayOpenTimer.isActive()) {
-            try session.connectionRetryTimer.reschedule();
-            session.delayOpenTimer.cancel();
+    try session.startConnection();
 
-            return .transition(.ACTIVE);
-        } else {
-            session.connectionRetryTimer.cancel();
-            session.closeConnection();
-
-            return .transition(.IDLE);
-        }
-    };
-
-    if (peer.delayOpen) {
-        try session.delayOpenTimer.start(peer.delayOpen_ms);
-        return .transition(.CONNECT);
-    }
-
-    const openMsg: model.BgpMessage = .{ .OPEN = .{ .version = 4, .asNumber = peer.localAsn, .holdTime = peer.holdTime, .peerRouterId = 0, .parameters = null } };
-
-    std.debug.assert(session.peerConnection != null);
-    try session.messageEncoder.writeMessage(openMsg, session.peerConnection.?.writer().any());
-
-    try session.holdTimer.start(4 * std.time.ms_per_min);
-
-    return .transition(.OPEN_SENT);
+    return .transition(.CONNECT);
 }
 
-fn handleDelayOpenExpired(peer: *Peer) !PostHandlerAction {
-    const session = &peer.session;
-
+fn handleDelayOpenExpired(session: *Session) !PostHandlerAction {
     session.connectionRetryTimer.cancel();
     session.delayOpenTimer.cancel();
 
-    const openMsg: model.BgpMessage = .{ .OPEN = .{ .version = 4, .asNumber = peer.localAsn, .holdTime = peer.holdTime, .peerRouterId = 0, .parameters = null } };
-    try session.messageEncoder.writeMessage(openMsg, session.peerConnection.?.writer().any());
+    try session.sendMessage(.{.OPEN=session.createOpenMessage(session.parent.holdTime)});
     try session.holdTimer.start(4 * std.time.ms_per_min);
 
     return .transition(.OPEN_SENT);
 }
 
-fn handleNewTcpConnection(peer: *Peer, connection: std.net.Stream) !PostHandlerAction {
-    const session = &peer.session;
+fn handleSuccessfulTcpConnection(session: *Session, connection: std.net.Stream) !PostHandlerAction {
+    try session.setPeerConnection(connection);
 
-    try session.replacePeerConnection(connection);
+    const peer = session.parent;
+
+    session.connectionRetryTimer.cancel();
 
     if (peer.delayOpen) {
-        session.connectionRetryTimer.cancel();
         try session.delayOpenTimer.start(peer.delayOpen_ms);
         return .keep;
-
     } else {
-        session.connectionRetryTimer.cancel();
-
-        const openMsg: model.BgpMessage = .{ .OPEN = .{ .version = 4, .asNumber = peer.localAsn, .holdTime = peer.holdTime, .peerRouterId = 0, .parameters = null } };
-        try session.messageEncoder.writeMessage(openMsg, session.peerConnection.?.writer().any());
+        try session.sendMessage(.{.OPEN=session.createOpenMessage(session.parent.holdTime)});
         try session.holdTimer.start(4 * std.time.ms_per_min);
 
         return .transition(.OPEN_SENT);
     }
 }
 
-fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
-    const session = &peer.session;
-
+fn handleTcpFailed(session: *Session) !PostHandlerAction {
     try session.connectionRetryTimer.reschedule();
     session.delayOpenTimer.cancel();
+    session.releaseResources();
 
     session.connectionRetryCount += 1;
 
@@ -108,24 +70,20 @@ fn handleTcpFailed(peer: *Peer) !PostHandlerAction {
     return .transition(.IDLE);
 }
 
-fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
-    const session = &peer.session;
-
+fn handleOpenReceived(session: *Session, msg: model.OpenMessage) !PostHandlerAction {
     std.debug.assert(session.delayOpenTimer.isActive());
+    session.delayOpenTimer.cancel();
 
     session.connectionRetryTimer.cancel();
-    session.delayOpenTimer.cancel();
 
     session.extractInfoFromOpenMessage(msg);
     const peerHoldTimer = msg.holdTime;
 
+    const peer = session.parent;
     const negotiatedHoldTimer = @min(peer.holdTime, peerHoldTimer);
 
-    const openResponse: model.BgpMessage = .{ .OPEN = .{ .version = 4, .asNumber = peer.localAsn, .holdTime = negotiatedHoldTimer, .peerRouterId = 0, .parameters = null } };
-    try session.messageEncoder.writeMessage(openResponse, session.peerConnection.?.writer().any());
-
-    const keepalive: model.BgpMessage = .{ .KEEPALIVE = .{} };
-    try session.messageEncoder.writeMessage(keepalive, session.peerConnection.?.writer().any());
+    try session.sendMessage(.{.OPEN=session.createOpenMessage(negotiatedHoldTimer)});
+    try session.sendMessage(.{ .KEEPALIVE = .{} });
 
     try session.holdTimer.start(negotiatedHoldTimer);
     try session.keepAliveTimer.start(negotiatedHoldTimer / 3);
@@ -133,9 +91,32 @@ fn handleOpenReceived(peer: *Peer, msg: model.OpenMessage) !PostHandlerAction {
     return .transition(.OPEN_CONFIRM);
 }
 
-pub fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
-    const session = &peer.session;
+pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !PostHandlerAction {
+    if (notif.errorKind != .UnsupportedVersionNumber) {
+        return .keep;
+    }
 
+    session.connectionRetryTimer.cancel();
+
+    if (session.delayOpenTimer.isActive()) {
+        session.delayOpenTimer.cancel();
+
+        session.releaseResources();
+        session.closeConnection();
+
+        return .transition(.IDLE);
+    }
+
+    session.releaseResources();
+    session.closeConnection();
+    session.connectionRetryCount += 1;
+
+    // TODO peer oscillation dampening here
+
+    return .transition(.IDLE);
+}
+
+pub fn handleOtherEvents(session: *Session) !PostHandlerAction {
     session.killAllTimers();
 
     session.closeConnection();
@@ -146,17 +127,17 @@ pub fn handleOtherEvents(peer: *Peer) !PostHandlerAction {
     return .transition(.IDLE);
 }
 
-pub fn handleEvent(peer: *Peer, event: Event) !PostHandlerAction {
+pub fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
     switch (event) {
-        .Stop => return try handleStop(peer),
-        .ConnectionRetryTimerExpired => return try handleRetryExpired(peer),
-        .TcpConnectionSuccessful => |connection| return try handleNewTcpConnection(peer, connection),
-        .TcpConnectionFailed => return try handleTcpFailed(peer),
-        .OpenReceived => |openMsg| return try handleOpenReceived(peer, openMsg),
+        .Stop => return try handleStop(session),
+        .ConnectionRetryTimerExpired => return try handleRetryExpired(session),
+        .TcpConnectionSuccessful => |connection| return try handleSuccessfulTcpConnection(session, connection),
+        .TcpConnectionFailed => return try handleTcpFailed(session),
+        .OpenReceived => |openMsg| return try handleOpenReceived(session, openMsg),
         // Start events are ignored
         .Start => return .keep,
         // TODO handle message checking error events
-        // TODO handle notification msg event
-        else => return try handleOtherEvents(peer),
+        .NotificationReceived => |notif| return try handleNotification(session, notif),
+        else => return try handleOtherEvents(session),
     }
 }

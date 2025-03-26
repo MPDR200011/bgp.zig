@@ -34,7 +34,9 @@ pub fn Timer(Context: type) type {
             };
         }
 
-        pub fn deinit(_: *Self) void {}
+        pub fn deinit(self: *Self) void {
+            self.join();
+        }
 
         fn executorFunction(self: *Self) void {
             self.mutex.lock();
