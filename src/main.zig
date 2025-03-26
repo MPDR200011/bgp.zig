@@ -35,7 +35,7 @@ pub fn myLogFn(
     // .my_project, .nice_library and the default
     const scope_prefix = "(" ++ @tagName(scope) ++ "): ";
 
-    comptime var upperLevel = [_]u8{ 0 };
+    comptime var upperLevel = [_]u8{0};
     comptime _ = std.ascii.upperString(&upperLevel, level.asText()[0..1]);
     const prefix = comptime upperLevel ++ " " ++ scope_prefix;
 
@@ -114,34 +114,26 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
         return AcceptHandlerError.PeerNotConfigured;
     };
 
-    const clientReader = ctx.conn.stream.reader().any();
-
-    const messageHeader = try headerReader.readHeader(clientReader);
-    if (messageHeader.messageType != .OPEN) {
-        return AcceptHandlerError.UnexpectedMessageType;
-    }
-
-    const openMessage = openReader.readOpenMessage(clientReader) catch |err| {
-        std.log.err("Error parsing OPEN message: {}", .{err});
-        return err;
-    };
-
-    collisionDetection: {
+    {
         peer.lock();
         defer peer.unlock();
 
-        if (peer.session.state != .OPEN_CONFIRM) {
-            break :collisionDetection;
+        switch (peer.session.state) {
+            .IDLE => {
+                // IDLE sessions should not accept connections as they are not looking for one
+                ctx.conn.stream.close();
+                return;
+            },
+            .ACTIVE => {
+                // Looking for connection, accept it
+                try peer.session.handleEvent(.{ .TcpConnectionSuccessful = ctx.conn.stream });
+                return;
+            },
+            else => {},
         }
 
-        if (ctx.localConfig.routerId < peer.session.info.?.peerId) {
-            // Local ID is lower
-            try peer.session.handleEvent(.{ .OpenCollisionDump = .{.openMsg = openMessage, .newConnection = ctx.conn.stream}});
-        } else {
-            ctx.conn.stream.close();
-        }
+        // From here on, we need to spin up a parallel FSM and track this connection until collision happens
     }
-
 }
 
 pub fn main() !void {
