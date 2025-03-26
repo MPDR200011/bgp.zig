@@ -12,10 +12,7 @@ const test_targets = [_]std.Target.Query{
     },
 };
 
-const SetupModule = struct  {
-    name: []const u8,
-    mod: *std.Build.Module
-};
+const SetupModule = struct { name: []const u8, mod: *std.Build.Module };
 
 const ExeSpec = struct {
     name: []const u8,
@@ -45,20 +42,10 @@ fn setupTests(b: *std.Build) void {
     }
 }
 
-fn setupExe(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    modules: []const SetupModule,
-    spec: *const ExeSpec
-) void {
+fn setupExe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, modules: []const SetupModule, spec: *const ExeSpec) void {
     const exe = b.addExecutable(.{
         .name = spec.name,
-        .root_module = b.createModule(.{
-            .root_source_file = b.path(spec.root_source_file),
-            .target = target,
-            .optimize = optimize
-        }),
+        .root_module = b.createModule(.{ .root_source_file = b.path(spec.root_source_file), .target = target, .optimize = optimize }),
     });
     for (modules) |mod| {
         exe.root_module.addImport(mod.name, mod.mod);
@@ -73,12 +60,7 @@ fn setupExe(
 }
 
 fn setupModule(b: *std.Build, name: []const u8, root_source_file: []const u8) SetupModule {
-    return .{
-        .name=name,
-        .mod=b.addModule(name, .{
-            .root_source_file = b.path(root_source_file)
-        })
-    };
+    return .{ .name = name, .mod = b.addModule(name, .{ .root_source_file = b.path(root_source_file) }) };
 }
 
 pub fn build(b: *std.Build) void {
@@ -86,12 +68,12 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const modules = [_]SetupModule{
-        setupModule(b, "scheduled_task", "src/utils/scheduled_task.zig"),
+        setupModule(b, "timer", "src/utils/timer.zig"),
     };
 
     const exes = [_]ExeSpec{
-        .{.name="zig-bgp", .root_source_file="src/main.zig", .cmd="run", .desc="Run main binary"},
-        .{.name="scheduled_task", .root_source_file="example_exes/test_scheduled_task.zig", .cmd="test_sched_task", .desc="Run Scheduled Task Example Binary"},
+        .{ .name = "zig-bgp", .root_source_file = "src/main.zig", .cmd = "run", .desc = "Run main binary" },
+        .{ .name = "scheduled_task", .root_source_file = "example_exes/test_timer.zig", .cmd = "test_sched_task", .desc = "Run Scheduled Task Example Binary" },
     };
 
     for (exes) |exeSpec| {

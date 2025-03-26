@@ -1,14 +1,6 @@
 const std = @import("std");
 const model = @import("../model.zig");
 
-const Parameter = struct {
-    type: u8,
-    length: u8,
-    value: []u8,
-};
-
-const OpenMessage = struct { version: u8, asNumber: u16, holdTime: u16, peerRouterId: u32, parametes: ?[]Parameter };
-
 const OpenParsingError = error{ UnsupportedOptionalParameter, ParamLengthsInconsistency };
 
 pub fn readOpenMessage(r: std.io.AnyReader) !model.OpenMessage {

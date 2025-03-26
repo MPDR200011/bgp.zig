@@ -1,21 +1,18 @@
 const std = @import("std");
-const scheduled_task = @import("scheduled_task");
+const timer = @import("timer");
 
-fn sayHello() void {
+fn sayHello(_: void) void {
     std.debug.print("Hello World!\n", .{});
 }
 
 pub fn main() !void {
-    var task = scheduled_task.ScheduledTask.init(
-        10000,
-        sayHello,
-    );
+    var task = timer.Timer(void).init(sayHello, {});
     defer task.deinit();
 
     // Normal operation
     var start = std.time.milliTimestamp();
     std.debug.print("Starting the task!\n", .{});
-    try task.start();
+    try task.start(10000);
 
     std.debug.print("Waiting for completion\n", .{});
     task.join();
@@ -23,11 +20,10 @@ pub fn main() !void {
     var currentT = std.time.milliTimestamp();
     std.debug.print("{} - Task finished\n", .{currentT - start});
 
-
     // Canceled
     start = std.time.milliTimestamp();
     std.debug.print("Starting the task!\n", .{});
-    try task.start();
+    try task.start(10000);
 
     std.time.sleep(5 * std.time.ns_per_s);
     currentT = std.time.milliTimestamp();
@@ -38,7 +34,7 @@ pub fn main() !void {
     // Rescheduling
     start = std.time.milliTimestamp();
     std.debug.print("Starting the task!\n", .{});
-    try task.start();
+    try task.start(10000);
 
     std.time.sleep(5 * std.time.ns_per_s);
     currentT = std.time.milliTimestamp();
@@ -47,5 +43,4 @@ pub fn main() !void {
     task.join();
     currentT = std.time.milliTimestamp();
     std.debug.print("{} - Task finished\n", .{currentT - start});
-
 }
