@@ -50,10 +50,14 @@ fn setupExe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     for (modules) |mod| {
         exe.root_module.addImport(mod.name, mod.mod);
     }
+    exe.root_module.addImport("clap", b.dependency("clap", .{ .target = target, .optimize = optimize }).module("clap"));
 
     b.installArtifact(exe);
 
     const run_exe = b.addRunArtifact(exe);
+    if (b.args) |args| {
+        run_exe.addArgs(args);
+    }
 
     const run_step = b.step(spec.cmd, spec.desc);
     run_step.dependOn(&run_exe.step);

@@ -342,7 +342,7 @@ pub const PeerConfig = struct {
     localAsn: u16,
     holdTime: u16,
     localRouterId: u32,
-    mode: Mode,
+    peeringMode: Mode,
     delayOpen: bool,
     delayOpen_ms: u32 = 0,
 
@@ -368,7 +368,7 @@ pub const Peer = struct {
             .localAsn = cfg.localAsn,
             .holdTime = cfg.holdTime,
             .localRouterId = cfg.localRouterId,
-            .mode = cfg.mode,
+            .mode = cfg.peeringMode,
             .delayOpen = cfg.delayOpen,
             .delayOpen_ms = cfg.delayOpen_ms,
             .sessionAddresses = cfg.sessionAddresses,

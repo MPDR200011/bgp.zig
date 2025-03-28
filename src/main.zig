@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const net = std.net;
 const posix = std.posix;
 const process = std.process;
+const clap = @import("clap");
 
 const Allocator = std.mem.Allocator;
 
@@ -142,12 +143,6 @@ pub fn main() !void {
 
     // Initializing GPA for the process
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    defer {
-        switch (debug_allocator.deinit()) {
-            .leak => std.debug.print("UNFREE'D MEMORY DETECTED!!!! CHECK YOUR ALLOCS!!! >:(", .{}),
-            else => std.debug.print("No memory leaks detected :)", .{}),
-        }
-    }
     const gpa, const is_debug = gpa: {
         if (builtin.os.tag == .wasi) {
             break :gpa .{ std.heap.wasm_allocator, false };
@@ -159,37 +154,58 @@ pub fn main() !void {
         };
     };
     defer if (is_debug) {
-        _ = debug_allocator.deinit();
+        switch (debug_allocator.deinit()) {
+            .leak => std.debug.print("UNFREE'D MEMORY DETECTED!!!! CHECK YOUR ALLOCS!!! >:(\n", .{}),
+            else => std.debug.print("No memory leaks detected :)\n", .{}),
+        }
     };
 
-    var env = try process.getEnvMap(gpa);
-    defer env.deinit();
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help     Display this help and exit.
+        \\--local_addr  <str>   Local address of the peering session, will also be used as router id
+        \\--peer_addr   <str>   Address of peer to connect to
+        \\--peering_mode    <PEER_MODE> Peering Mode
+        \\--local_asn   <asn>   Local ASN
+        \\--router_id   <rID>   Router ID to use
+    );
 
-    const LOCAL_ADDR_ENV_NAME = "BGP_LOCAL_ADDR";
-    const PEER_ADDR_ENV_NAME = "BGP_PEER_ADDR";
-    const MODE_ENV_NAME = "BGP_MODE";
+    const parsers = comptime .{ .str = clap.parsers.string, .asn = clap.parsers.int(u16, 10), .rID = clap.parsers.int(u32, 10), .PEER_MODE = clap.parsers.enumeration(session.Mode) };
 
-    const localAddr = env.get(LOCAL_ADDR_ENV_NAME) orelse {
-        std.log.err("Missing local address", .{});
-        process.exit(1);
+    var diag = clap.Diagnostic{};
+    var res = clap.parse(clap.Help, &params, parsers, .{
+        .diagnostic = &diag,
+        .allocator = gpa,
+    }) catch |err| {
+        // Report useful error and exit.
+        diag.report(std.io.getStdErr().writer(), err) catch {};
+        return err;
     };
-    const peerAddr = env.get(PEER_ADDR_ENV_NAME) orelse {
-        std.log.err("Missing peer address", .{});
-        process.exit(1);
-    };
-    const modeStr = env.get(MODE_ENV_NAME) orelse {
-        std.log.err("Missing bgp mode", .{});
-        process.exit(1);
+    defer res.deinit();
+
+    if (res.args.help != 0) {
+        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
+    }
+
+    const localAddr = res.args.local_addr orelse "127.0.0.1";
+    const peerAddr = res.args.peer_addr orelse {
+        std.debug.print("Missing peer_addr\n", .{});
+        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
     };
 
-    const mode = std.meta.stringToEnum(session.Mode, modeStr) orelse {
-        std.log.err("Invalid bgp mode {s}", .{modeStr});
-        process.exit(1);
+    const peeringMode = res.args.peering_mode orelse {
+        std.debug.print("Missing peering_mode\n", .{});
+        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
     };
 
     const localConfig: DeviceConfig = .{
-        .asn = 0,
-        .routerId = 1,
+        .asn = res.args.local_asn orelse {
+            std.debug.print("Missing local_asn\n", .{});
+            return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
+        },
+        .routerId = res.args.router_id orelse {
+            std.debug.print("Missing router_id\n", .{});
+            return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
+        },
     };
 
     var peerMap = PeerMap.init(gpa);
@@ -203,10 +219,10 @@ pub fn main() !void {
 
     const peer = try gpa.create(Peer);
     peer.* = .init(.{
-        .localAsn = 9000,
+        .localAsn = localConfig.asn,
         .holdTime = 60,
-        .localRouterId = 0,
-        .mode = mode,
+        .localRouterId = localConfig.routerId,
+        .peeringMode = peeringMode,
         .delayOpen = false,
         .sessionAddresses = .{
             .localAddress = localAddr,
@@ -216,9 +232,11 @@ pub fn main() !void {
 
     try peerMap.put(peer.sessionAddresses, peer);
 
-    const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, 179);
+    const BGP_PORT = 9000;
 
-    std.log.info("Listening on port 179", .{});
+    const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, 9000);
+
+    std.log.info("Listening on port {}", .{BGP_PORT});
     var server = try addr.listen(.{});
 
     const client = try server.accept();
