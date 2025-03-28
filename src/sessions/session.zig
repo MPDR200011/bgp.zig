@@ -135,12 +135,6 @@ fn connectionStartThread(ctx: StartConnContext) !void {
         std.log.err("Failed to establish TCP connection with peer: {}", .{err});
 
         ctx.session.connectionState = .Closing;
-
-        ctx.session.peerConnection.?.close();
-        ctx.session.peerConnectionThread.?.join();
-        ctx.session.peerConnectionThread = null;
-        ctx.session.peerConnection = null;
-
         try ctx.session.handleEvent(.{ .TcpConnectionFailed = {} });
 
         return err;
@@ -292,10 +286,15 @@ pub const Session = struct {
     }
 
     pub fn closeConnection(self: *Self) void {
+        std.log.info("Closing connection", .{});
         self.connectionState = .Closing;
 
-        self.peerConnection.?.close();
-        self.peerConnectionThread.?.join();
+        if (self.peerConnection) |conn| {
+            conn.close();
+        }
+        if (self.peerConnectionThread) |t| {
+            t.join();
+        }
         self.peerConnection = null;
         self.peerConnectionThread = null;
     }
