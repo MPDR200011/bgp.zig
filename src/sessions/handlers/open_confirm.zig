@@ -40,6 +40,8 @@ fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
 }
 
 fn handleKeepAliveTimerExpires(session: *Session) !PostHandlerAction {
+    std.log.debug("Sending KEEPALIVE", .{});
+
     try session.sendMessage(.{.KEEPALIVE = .{}});
 
     try session.keepAliveTimer.reschedule();
@@ -73,6 +75,8 @@ fn handleConnectionCollision(session: *Session) !PostHandlerAction {
 }
 
 fn handleKeepAliveReceived(session: *Session) !PostHandlerAction {
+    std.log.debug("KEEPALIVE Received", .{});
+
     try session.holdTimer.reschedule();
 
     return .transition(.ESTABLISHED);
