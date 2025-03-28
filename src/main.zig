@@ -163,13 +163,15 @@ pub fn main() !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help     Display this help and exit.
         \\--local_addr  <str>   Local address of the peering session, will also be used as router id
+        \\--local_port  <port>  Local port to listen on
         \\--peer_addr   <str>   Address of peer to connect to
+        \\--peer_port  <port>   Port Peer is listening on
         \\--peering_mode    <PEER_MODE> Peering Mode
         \\--local_asn   <asn>   Local ASN
         \\--router_id   <rID>   Router ID to use
     );
 
-    const parsers = comptime .{ .str = clap.parsers.string, .asn = clap.parsers.int(u16, 10), .rID = clap.parsers.int(u32, 10), .PEER_MODE = clap.parsers.enumeration(session.Mode) };
+    const parsers = comptime .{ .str = clap.parsers.string, .asn = clap.parsers.int(u16, 10), .rID = clap.parsers.int(u32, 10), .PEER_MODE = clap.parsers.enumeration(session.Mode), .port = clap.parsers.default.u16 };
 
     var diag = clap.Diagnostic{};
     var res = clap.parse(clap.Help, &params, parsers, .{
@@ -208,6 +210,9 @@ pub fn main() !void {
         },
     };
 
+    const localPort = res.args.local_port orelse 179;
+    const peerPort = res.args.peer_port orelse 179;
+
     var peerMap = PeerMap.init(gpa);
     defer {
         var it = peerMap.valueIterator();
@@ -217,26 +222,36 @@ pub fn main() !void {
         peerMap.deinit();
     }
 
-    const peer = try gpa.create(Peer);
-    peer.* = .init(.{
-        .localAsn = localConfig.asn,
-        .holdTime = 60,
-        .localRouterId = localConfig.routerId,
-        .peeringMode = peeringMode,
-        .delayOpen = false,
-        .sessionAddresses = .{
-            .localAddress = localAddr,
-            .peerAddress = peerAddr,
-        },
-    }, peer, gpa);
+    {
+        const peer = try gpa.create(Peer);
+        peer.* = .init(.{
+            .localAsn = localConfig.asn,
+            .holdTime = 60,
+            .localRouterId = localConfig.routerId,
+            .peeringMode = peeringMode,
+            .delayOpen = false,
+            .sessionAddresses = .{
+                .localAddress = localAddr,
+                .peerAddress = peerAddr,
+            },
+            .sessionPorts = .{
+                .localPort = localPort,
+                .peerPort = peerPort,
+            },
+        }, peer, gpa);
 
-    try peerMap.put(peer.sessionAddresses, peer);
+        try peerMap.put(peer.sessionAddresses, peer);
+    }
 
-    const BGP_PORT = 9000;
 
-    const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, 9000);
+    var it = peerMap.valueIterator();
+    while (it.next()) |peer| {
+        try peer.*.session.handleEvent(.{ .Start = {} });
+    }
 
-    std.log.info("Listening on port {}", .{BGP_PORT});
+    const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, localPort);
+
+    std.log.info("Listening on port {}", .{localPort});
     var server = try addr.listen(.{});
 
     const client = try server.accept();

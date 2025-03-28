@@ -130,7 +130,7 @@ fn connectionStartThread(ctx: StartConnContext) !void {
     std.debug.assert(ctx.session.peerConnection == null);
     std.debug.assert(ctx.session.peerConnectionThread == null);
 
-    const peerAddress = std.net.Address.parseIp(ctx.session.parent.sessionAddresses.peerAddress, 179) catch unreachable;
+    const peerAddress = std.net.Address.parseIp(ctx.session.parent.sessionAddresses.peerAddress, ctx.session.parent.sessionPorts.peerPort) catch unreachable;
     const peerConnection = std.net.tcpConnectToAddress(peerAddress) catch |err| {
         std.log.err("Failed to establish TCP connection with peer: {}", .{err});
 
@@ -301,9 +301,6 @@ pub const Session = struct {
     }
 
     fn switchState(self: *Self, nextState: SessionState) !void {
-        self.parent.session.mutex.lock();
-        defer self.parent.session.mutex.unlock();
-
         std.log.info("Session switching state: {s} => {s}", .{ @tagName(self.parent.session.state), @tagName(nextState) });
 
         self.parent.session.state = nextState;
@@ -338,6 +335,11 @@ pub const PeerSessionAddresses = struct {
     peerAddress: []const u8,
 };
 
+pub const PeerSessionPorts = struct {
+    localPort: u16,
+    peerPort: u16,
+};
+
 pub const PeerConfig = struct {
     localAsn: u16,
     holdTime: u16,
@@ -347,6 +349,7 @@ pub const PeerConfig = struct {
     delayOpen_ms: u32 = 0,
 
     sessionAddresses: PeerSessionAddresses,
+    sessionPorts: PeerSessionPorts,
 };
 pub const Peer = struct {
     const Self = @This();
@@ -359,6 +362,7 @@ pub const Peer = struct {
     delayOpen_ms: u32 = 0,
 
     sessionAddresses: PeerSessionAddresses,
+    sessionPorts: PeerSessionPorts,
     session: Session,
 
     mutex: std.Thread.Mutex,
@@ -372,6 +376,7 @@ pub const Peer = struct {
             .delayOpen = cfg.delayOpen,
             .delayOpen_ms = cfg.delayOpen_ms,
             .sessionAddresses = cfg.sessionAddresses,
+            .sessionPorts = cfg.sessionPorts,
             .session = .init(self, alloc),
             .mutex = .{},
         };
