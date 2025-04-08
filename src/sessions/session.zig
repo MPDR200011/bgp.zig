@@ -28,25 +28,9 @@ pub const Mode = enum(u8) {
     ACTIVE = 2,
 };
 
-const EventTag = enum(u8) {
-    Start = 1,
-    Stop = 2,
-    OpenReceived = 3,
-    ConnectionRetryTimerExpired = 4,
-    HoldTimerExpired = 5,
-    KeepAliveTimerExpired = 6,
-    KeepAliveReceived = 7,
-    DelayOpenTimerExpired = 8,
-    TcpConnectionFailed = 9,
-    TcpConnectionSuccessful = 10,
-    OpenCollisionDump = 11,
-    UpdateReceived = 12,
-    NotificationReceived = 13,
-};
-
 pub const CollisionContext = struct { newConnection: std.net.Stream, openMsg: messageModel.OpenMessage };
 
-pub const Event = union(EventTag) {
+pub const Event = union(enum) {
     Start: void,
     Stop: void,
     OpenReceived: messageModel.OpenMessage,
@@ -62,12 +46,7 @@ pub const Event = union(EventTag) {
     NotificationReceived: messageModel.NotificationMessage,
 };
 
-const PostHandlerActionTag = enum(u8) {
-    Keep = 1,
-    Transition = 2,
-};
-
-pub const PostHandlerAction = union(PostHandlerActionTag) {
+pub const PostHandlerAction = union(enum) {
     Keep: void,
     Transition: SessionState,
 
