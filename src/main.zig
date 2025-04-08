@@ -217,6 +217,7 @@ pub fn main() !void {
     defer {
         var it = peerMap.valueIterator();
         while (it.next()) |peer| {
+            peer.*.deinit();
             gpa.destroy(peer.*);
         }
         peerMap.deinit();

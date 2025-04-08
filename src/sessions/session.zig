@@ -376,9 +376,13 @@ pub const Peer = struct {
             .delayOpen_ms = cfg.delayOpen_ms,
             .sessionAddresses = cfg.sessionAddresses,
             .sessionPorts = cfg.sessionPorts,
-            .session = .init(self, alloc),
+            .session = try .init(self, alloc),
             .mutex = .{},
         };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.session.deinit();
     }
 
     pub fn lock(self: *Self) void {
