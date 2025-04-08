@@ -23,7 +23,7 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
     var messageReader = bgpParsing.MessageReader.init(clientReader, ctx.allocator);
     defer messageReader.deinit();
 
-    std.log.info("Connection handler thread started.",. {});
+    std.log.info("Connection handler thread started.", .{});
 
     // TODO: this guy will need to know if the connection teardown is graceful or not,
     // possibly a "graceful" flag in the session struct?
@@ -32,11 +32,10 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
             std.log.err("Error reading next BGP message: {}", .{err});
 
             switch (err) {
-                error.ConnectionResetByPeer => {
+                error.ConnectionResetByPeer, error.EndOfStream => {
                     ctx.session.parent.lock();
                     defer ctx.session.parent.unlock();
-                    // FIXME: this causes the thread to join itself
-                    ctx.session.handleEvent(.{ .TcpConnectionFailed = {} }) catch {
+                    ctx.session.submitEvent(.{ .TcpConnectionFailed = {} }) catch {
                         std.log.err("Failed to handle TCP error", .{});
                         std.process.abort();
                     };
@@ -45,7 +44,7 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
                 else => {
                     std.log.err("FATAL: Unhandled Error reading BGP message: {}", .{err});
                     std.process.abort();
-                }
+                },
             }
         };
 
@@ -63,7 +62,7 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
 
         ctx.session.parent.lock();
         defer ctx.session.parent.unlock();
-        ctx.session.handleEvent(event) catch |err| {
+        ctx.session.submitEvent(event) catch |err| {
             std.log.err("Error handling event {s}: {}", .{ @tagName(event), err });
             break :connection;
         };

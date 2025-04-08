@@ -51,6 +51,7 @@ fn setupExe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
         exe.root_module.addImport(mod.name, mod.mod);
     }
     exe.root_module.addImport("clap", b.dependency("clap", .{ .target = target, .optimize = optimize }).module("clap"));
+    exe.root_module.addImport("zul", b.dependency("zul", .{ .target = target, .optimize = optimize }).module("zul"));
 
     b.installArtifact(exe);
 

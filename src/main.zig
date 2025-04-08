@@ -127,7 +127,7 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
             },
             .ACTIVE => {
                 // Looking for connection, accept it
-                try peer.session.handleEvent(.{ .TcpConnectionSuccessful = ctx.conn.stream });
+                try peer.session.submitEvent(.{ .TcpConnectionSuccessful = ctx.conn.stream });
                 return;
             },
             else => {},
@@ -225,7 +225,7 @@ pub fn main() !void {
 
     {
         const peer = try gpa.create(Peer);
-        peer.* = .init(.{
+        peer.* = session.Peer.init(.{
             .localAsn = localConfig.asn,
             .holdTime = 60,
             .localRouterId = localConfig.routerId,
@@ -239,15 +239,17 @@ pub fn main() !void {
                 .localPort = localPort,
                 .peerPort = peerPort,
             },
-        }, peer, gpa);
+        }, peer, gpa) catch |err| {
+            std.log.err("Failed to initialize peer memory: {}", .{err});
+            return err;
+        };
 
         try peerMap.put(peer.sessionAddresses, peer);
     }
 
-
     var it = peerMap.valueIterator();
     while (it.next()) |peer| {
-        try peer.*.session.handleEvent(.{ .Start = {} });
+        try peer.*.session.submitEvent(.{ .Start = {} });
     }
 
     const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, localPort);
