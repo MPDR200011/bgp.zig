@@ -4,6 +4,7 @@ const net = std.net;
 const posix = std.posix;
 const process = std.process;
 const clap = @import("clap");
+const ip = @import("ip");
 
 const Allocator = std.mem.Allocator;
 
@@ -15,12 +16,12 @@ const headerReader = @import("messaging/parsing/header.zig");
 const openReader = @import("messaging/parsing/open.zig");
 const bgpEncoding = @import("messaging/encoding/encoder.zig");
 
-const PeerSessionAddresses = session.PeerSessionAddresses;
+const v4PeerSessionAddresses = session.v4PeerSessionAddresses;
 const Peer = session.Peer;
 
 pub const std_options: std.Options = .{
     // Set the log level to info
-    .log_level = .info,
+    .log_level = .debug,
 
     // Define logFn to override the std implementation
     .logFn = myLogFn,
@@ -50,16 +51,17 @@ pub fn myLogFn(
 pub const PeerMapCtx = struct {
     const Self = @This();
 
-    pub fn hash(_: Self, s: PeerSessionAddresses) u64 {
-        return std.hash_map.hashString(s.localAddress) ^ std.hash_map.hashString(s.peerAddress);
+    pub fn hash(_: Self, s: v4PeerSessionAddresses) u64 {
+        const hashFn = std.hash_map.getAutoHashFn(ip.IpV4Address, void);
+        return hashFn({}, s.localAddress) ^ hashFn({}, s.peerAddress);
     }
 
-    pub fn eql(_: Self, s1: PeerSessionAddresses, s2: PeerSessionAddresses) bool {
-        return std.hash_map.eqlString(s1.localAddress, s2.localAddress) and std.hash_map.eqlString(s1.peerAddress, s2.peerAddress);
+    pub fn eql(_: Self, s1: v4PeerSessionAddresses, s2: v4PeerSessionAddresses) bool {
+        return s1.localAddress.equals(s2.localAddress) and s1.peerAddress.equals(s2.peerAddress);
     }
 };
 
-pub const PeerMap = std.HashMap(PeerSessionAddresses, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
+pub const PeerMap = std.HashMap(v4PeerSessionAddresses, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
 
 pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]const u8 {
     var addressBuffer: [32]u8 = undefined;
@@ -97,6 +99,13 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
 
     const peerAddr = ctx.conn.address;
     const peerAddrStr = try getAddrString(peerAddr, ctx.allocator);
+    var peerSepIdx: usize = 0;
+    for (peerAddrStr, 0..) |c, i| {
+        if (c == ':') {
+            peerSepIdx = i;
+            break;
+        }
+    }
     defer ctx.allocator.free(peerAddrStr);
 
     var local_addr: net.Address = undefined;
@@ -105,11 +114,18 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
         std.log.err("Error getting local address for connection : {s}", .{@errorName(err)});
     };
     const localAddrStr = try getAddrString(peerAddr, ctx.allocator);
+    var localSepIdx: usize = 0;
+    for (localAddrStr, 0..) |c, i| {
+        if (c == ':') {
+            localSepIdx = i;
+            break;
+        }
+    }
     defer ctx.allocator.free(localAddrStr);
 
-    const peer = ctx.peerMap.get(PeerSessionAddresses{
-        .localAddress = localAddrStr,
-        .peerAddress = peerAddrStr,
+    const peer = ctx.peerMap.get(v4PeerSessionAddresses{
+        .localAddress = try .parse(localAddrStr[0..localSepIdx]),
+        .peerAddress = try .parse(peerAddrStr[0..peerSepIdx]),
     }) orelse {
         std.log.info("Received connection request from unconfigured peer localAddr={s} remoteAddr={s}", .{ localAddrStr, peerAddrStr });
         return AcceptHandlerError.PeerNotConfigured;
@@ -169,9 +185,10 @@ pub fn main() !void {
         \\--peering_mode    <PEER_MODE> Peering Mode
         \\--local_asn   <asn>   Local ASN
         \\--router_id   <rID>   Router ID to use
+        \\--delay_open  <u16>   Delay open amount
     );
 
-    const parsers = comptime .{ .str = clap.parsers.string, .asn = clap.parsers.int(u16, 10), .rID = clap.parsers.int(u32, 10), .PEER_MODE = clap.parsers.enumeration(session.Mode), .port = clap.parsers.default.u16 };
+    const parsers = comptime .{ .str = clap.parsers.string, .asn = clap.parsers.int(u16, 10), .rID = clap.parsers.int(u32, 10), .PEER_MODE = clap.parsers.enumeration(session.Mode), .port = clap.parsers.default.u16, .u16 = clap.parsers.default.u16 };
 
     var diag = clap.Diagnostic{};
     var res = clap.parse(clap.Help, &params, parsers, .{
@@ -210,6 +227,8 @@ pub fn main() !void {
         },
     };
 
+    const delayOpenAmount: u16 = res.args.delay_open orelse 0;
+
     const localPort = res.args.local_port orelse 179;
     const peerPort = res.args.peer_port orelse 179;
 
@@ -227,13 +246,14 @@ pub fn main() !void {
         const peer = try gpa.create(Peer);
         peer.* = session.Peer.init(.{
             .localAsn = localConfig.asn,
-            .holdTime = 60,
+            .holdTime = 300,
             .localRouterId = localConfig.routerId,
             .peeringMode = peeringMode,
-            .delayOpen = false,
+            .delayOpen = delayOpenAmount > 0,
+            .delayOpen_ms = delayOpenAmount * std.time.ms_per_s,
             .sessionAddresses = .{
-                .localAddress = localAddr,
-                .peerAddress = peerAddr,
+                .localAddress = try .parse(localAddr),
+                .peerAddress = try .parse(peerAddr),
             },
             .sessionPorts = .{
                 .localPort = localPort,
@@ -257,14 +277,16 @@ pub fn main() !void {
     std.log.info("Listening on port {}", .{localPort});
     var server = try addr.listen(.{});
 
-    const client = try server.accept();
+    while (true) {
+        const client = try server.accept();
 
-    const peerAddrStr = try getAddrString(client.address, gpa);
-    defer gpa.free(peerAddrStr);
+        const peerAddrStr = try getAddrString(client.address, gpa);
+        defer gpa.free(peerAddrStr);
 
-    std.log.info("Connection received from {s}", .{peerAddrStr});
+        std.log.info("Connection received from {s}", .{peerAddrStr});
 
-    const acceptContext: AcceptContext = .{ .conn = client, .peerMap = &peerMap, .allocator = gpa, .localConfig = localConfig };
-    var acceptThread = try std.Thread.spawn(.{}, acceptHandler, .{acceptContext});
-    acceptThread.join();
+        const acceptContext: AcceptContext = .{ .conn = client, .peerMap = &peerMap, .allocator = gpa, .localConfig = localConfig };
+        var acceptThread = try std.Thread.spawn(.{}, acceptHandler, .{acceptContext});
+        acceptThread.join();
+    }
 }

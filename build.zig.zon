@@ -40,11 +40,12 @@
             .url = "git+https://github.com/Hejsil/zig-clap#a4e784da8399c51d5eeb5783e6a485b960d5c1f9",
             .hash = "clap-0.10.0-oBajB8fkAQB0JvsrWLar4YZrseSZ9irFxHB7Hvy_bvxb",
         },
-        .zul = .{
-            .url = "https://github.com/karlseguin/zul/archive/master.tar.gz",
-            .hash = "zul-0.0.0-1oDot0BCBwA9cUo5OOrPs5NGmvoM7sk1ztfbdfL7mh4P"
-        }, 
-     },
+        .zul = .{ .url = "https://github.com/karlseguin/zul/archive/master.tar.gz", .hash = "zul-0.0.0-1oDot0BCBwA9cUo5OOrPs5NGmvoM7sk1ztfbdfL7mh4P" },
+        .ip_zig = .{
+            .url = "https://github.com/MPDR200011/ip.zig/archive/master.tar.gz",
+            .hash = "ip_zig-0.0.0-UpeXbd94AAC-R4JXZOEnvlweNOaI5_ezHm9BxHGqmpPp",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

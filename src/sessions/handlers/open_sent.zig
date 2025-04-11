@@ -3,6 +3,8 @@ const connections = @import("../connections.zig");
 const sessionLib = @import("../session.zig");
 const model = @import("../../messaging/model.zig");
 
+const common = @import("common.zig");
+
 const Session = sessionLib.Session;
 
 const PostHandlerAction = sessionLib.PostHandlerAction;
@@ -10,9 +12,8 @@ const Event = sessionLib.Event;
 const CollisionContext = sessionLib.CollisionContext;
 
 pub fn handleStop(session: *Session) !PostHandlerAction {
-
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
-    try session.sendMessage(.{.NOTIFICATION = msg});
+    try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
     session.releaseResources();
@@ -27,9 +28,8 @@ pub fn handleStop(session: *Session) !PostHandlerAction {
 }
 
 pub fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
-
     const msg: model.NotificationMessage = .initNoData(.HoldTimerExpired, .Default);
-    try session.sendMessage(.{.NOTIFICATION = msg});
+    try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
     session.releaseResources();
@@ -48,19 +48,17 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
 }
 
 fn handleOpenReceived(session: *Session, msg: model.OpenMessage) !PostHandlerAction {
-
     session.connectionRetryTimer.cancel();
     session.delayOpenTimer.cancel();
 
     session.extractInfoFromOpenMessage(msg);
-    const peerHoldTimer = msg.holdTime;
 
-    const peer = session.parent;
-    const negotiatedHoldTimer = @min(peer.holdTime, peerHoldTimer);
+    const negotiatedHoldTimer = common.getNegotiatedHoldTimer(session, msg.holdTime);
 
     const keepalive: model.BgpMessage = .{ .KEEPALIVE = .{} };
     try session.sendMessage(keepalive);
 
+    session.holdTimer.cancel();
     try session.holdTimer.start(negotiatedHoldTimer);
     try session.keepAliveTimer.start(negotiatedHoldTimer / 3);
 
@@ -69,7 +67,7 @@ fn handleOpenReceived(session: *Session, msg: model.OpenMessage) !PostHandlerAct
 
 fn handleConnectionCollision(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
-    try session.sendMessage(.{.NOTIFICATION = msg});
+    try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
     session.releaseResources();
@@ -100,7 +98,7 @@ pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !
 
 pub fn handleOtherEvents(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.FSMError, .Default);
-    try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
+    try session.messageEncoder.writeMessage(.{ .NOTIFICATION = msg }, session.peerConnection.?.writer().any());
 
     session.killAllTimers();
     session.closeConnection();
@@ -110,7 +108,6 @@ pub fn handleOtherEvents(session: *Session) !PostHandlerAction {
 
     return .transition(.IDLE);
 }
-
 
 pub fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
     switch (event) {

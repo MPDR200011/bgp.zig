@@ -11,7 +11,7 @@ const CollisionContext = sessionLib.CollisionContext;
 
 fn handleStop(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
-    try session.sendMessage(.{.NOTIFICATION = msg});
+    try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
 
@@ -30,10 +30,11 @@ fn handleStop(session: *Session) !PostHandlerAction {
 
 fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.HoldTimerExpired, .Default);
-    try session.sendMessage(.{.NOTIFICATION = msg});
+    try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
     session.releaseResources();
+    std.debug.print("HOLD TIMER", .{});
     session.closeConnection();
     session.connectionRetryCount += 1;
 
@@ -45,7 +46,7 @@ fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
 fn handleKeepAliveTimerExpires(session: *Session) !PostHandlerAction {
     std.log.debug("Sending KEEPALIVE", .{});
 
-    try session.sendMessage(.{.KEEPALIVE = .{}});
+    try session.sendMessage(.{ .KEEPALIVE = .{} });
 
     // TODO if hold time is 0, don't do this
     try session.keepAliveTimer.reschedule();
@@ -59,6 +60,7 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
     // TODO delete all routes
 
     session.releaseResources();
+    std.debug.print("TCP FAILED", .{});
     session.closeConnection();
     session.connectionRetryCount += 1;
 
@@ -67,13 +69,14 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
 
 fn handleConnectionCollision(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
-    try session.sendMessage(.{.NOTIFICATION = msg});
+    try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
 
     // TODO delete all routes
 
     session.releaseResources();
+    std.debug.print("TCP FAILED", .{});
     session.closeConnection();
 
     session.connectionRetryCount += 1;
@@ -101,9 +104,10 @@ fn handleUpdateReceived(session: *Session, msg: model.UpdateMessage) !PostHandle
 
 fn handleOtherEvents(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.FSMError, .Default);
-    try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
+    try session.messageEncoder.writeMessage(.{ .NOTIFICATION = msg }, session.peerConnection.?.writer().any());
 
     session.killAllTimers();
+    std.debug.print("OTHER", .{});
     session.closeConnection();
     session.connectionRetryCount += 1;
 
@@ -111,7 +115,6 @@ fn handleOtherEvents(session: *Session) !PostHandlerAction {
 
     return .transition(.IDLE);
 }
-
 
 pub fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
     switch (event) {

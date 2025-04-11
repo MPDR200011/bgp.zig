@@ -15,7 +15,7 @@ pub const ConnectionHandlerContext = struct {
 
 pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
     const connection = ctx.session.peerConnection orelse {
-        std.log.info("There is not peer connection active right now.", .{});
+        std.log.info("There is no peer connection active right now.", .{});
         return;
     };
     const clientReader = connection.reader().any();
@@ -28,6 +28,7 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
     // TODO: this guy will need to know if the connection teardown is graceful or not,
     // possibly a "graceful" flag in the session struct?
     connection: while (true) {
+        std.log.debug("Reading next message:", .{});
         const message: model.BgpMessage = messageReader.readMessage() catch |err| {
             std.log.err("Error reading next BGP message: {}", .{err});
 
@@ -47,6 +48,7 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
                 },
             }
         };
+        std.log.debug("Got message: {s}", .{@tagName(message)});
 
         defer messageReader.deInitMessage(message);
 
@@ -60,8 +62,8 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
             },
         };
 
-        ctx.session.parent.lock();
-        defer ctx.session.parent.unlock();
+        // ctx.session.parent.lock();
+        // defer ctx.session.parent.unlock();
         ctx.session.submitEvent(event) catch |err| {
             std.log.err("Error handling event {s}: {}", .{ @tagName(event), err });
             break :connection;

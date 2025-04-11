@@ -52,6 +52,7 @@ fn setupExe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     }
     exe.root_module.addImport("clap", b.dependency("clap", .{ .target = target, .optimize = optimize }).module("clap"));
     exe.root_module.addImport("zul", b.dependency("zul", .{ .target = target, .optimize = optimize }).module("zul"));
+    exe.root_module.addImport("ip", b.dependency("ip_zig", .{ .target = target, .optimize = optimize }).module("ip"));
 
     b.installArtifact(exe);
 

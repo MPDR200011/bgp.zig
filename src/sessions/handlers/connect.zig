@@ -3,6 +3,8 @@ const connections = @import("../connections.zig");
 const sessionLib = @import("../session.zig");
 const model = @import("../../messaging/model.zig");
 
+const common = @import("common.zig");
+
 const Session = sessionLib.Session;
 
 const PostHandlerAction = sessionLib.PostHandlerAction;
@@ -28,7 +30,7 @@ fn handleRetryExpired(session: *Session) !PostHandlerAction {
 }
 
 fn handleDelayOpenExpired(session: *Session) !PostHandlerAction {
-    try session.sendMessage(.{.OPEN=session.createOpenMessage(session.parent.holdTime)});
+    try session.sendMessage(.{ .OPEN = session.createOpenMessage(session.parent.holdTime) });
     try session.holdTimer.start(4 * std.time.ms_per_min);
 
     return .transition(.OPEN_SENT);
@@ -42,7 +44,7 @@ fn handleTcpSuccessful(session: *Session) !PostHandlerAction {
         return .keep;
     }
 
-    try session.sendMessage(.{.OPEN=session.createOpenMessage(session.parent.holdTime)});
+    try session.sendMessage(.{ .OPEN = session.createOpenMessage(session.parent.holdTime) });
     try session.holdTimer.start(4 * std.time.ms_per_min);
 
     return .transition(.OPEN_SENT);
@@ -70,11 +72,11 @@ fn handleOpenReceived(session: *Session, msg: model.OpenMessage) !PostHandlerAct
     session.connectionRetryTimer.cancel();
 
     session.extractInfoFromOpenMessage(msg);
-    const peerHoldTimer = msg.holdTime;
 
-    const negotiatedHoldTimer = @min(session.parent.holdTime, peerHoldTimer);
+    const negotiatedHoldTimer = common.getNegotiatedHoldTimer(session, msg.holdTime);
 
-    try session.sendMessage(.{.OPEN=session.createOpenMessage(negotiatedHoldTimer)});
+    const peer = session.parent;
+    try session.sendMessage(.{ .OPEN = session.createOpenMessage(peer.holdTime) });
     try session.sendMessage(.{ .KEEPALIVE = .{} });
 
     try session.holdTimer.start(negotiatedHoldTimer);

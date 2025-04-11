@@ -3,6 +3,8 @@ const connections = @import("../connections.zig");
 const sessionLib = @import("../session.zig");
 const model = @import("../../messaging/model.zig");
 
+const common = @import("common.zig");
+
 const Session = sessionLib.Session;
 
 const PostHandlerAction = sessionLib.PostHandlerAction;
@@ -34,7 +36,7 @@ fn handleDelayOpenExpired(session: *Session) !PostHandlerAction {
     session.connectionRetryTimer.cancel();
     session.delayOpenTimer.cancel();
 
-    try session.sendMessage(.{.OPEN=session.createOpenMessage(session.parent.holdTime)});
+    try session.sendMessage(.{ .OPEN = session.createOpenMessage(session.parent.holdTime) });
     try session.holdTimer.start(4 * std.time.ms_per_min);
 
     return .transition(.OPEN_SENT);
@@ -51,7 +53,7 @@ fn handleSuccessfulTcpConnection(session: *Session, connection: std.net.Stream) 
         try session.delayOpenTimer.start(peer.delayOpen_ms);
         return .keep;
     } else {
-        try session.sendMessage(.{.OPEN=session.createOpenMessage(session.parent.holdTime)});
+        try session.sendMessage(.{ .OPEN = session.createOpenMessage(session.parent.holdTime) });
         try session.holdTimer.start(4 * std.time.ms_per_min);
 
         return .transition(.OPEN_SENT);
@@ -77,12 +79,11 @@ fn handleOpenReceived(session: *Session, msg: model.OpenMessage) !PostHandlerAct
     session.connectionRetryTimer.cancel();
 
     session.extractInfoFromOpenMessage(msg);
-    const peerHoldTimer = msg.holdTime;
+
+    const negotiatedHoldTimer = common.getNegotiatedHoldTimer(session, msg.holdTime);
 
     const peer = session.parent;
-    const negotiatedHoldTimer = @min(peer.holdTime, peerHoldTimer);
-
-    try session.sendMessage(.{.OPEN=session.createOpenMessage(negotiatedHoldTimer)});
+    try session.sendMessage(.{ .OPEN = session.createOpenMessage(peer.holdTime) });
     try session.sendMessage(.{ .KEEPALIVE = .{} });
 
     try session.holdTimer.start(negotiatedHoldTimer);
@@ -133,6 +134,7 @@ pub fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
         .ConnectionRetryTimerExpired => return try handleRetryExpired(session),
         .TcpConnectionSuccessful => |connection| return try handleSuccessfulTcpConnection(session, connection),
         .TcpConnectionFailed => return try handleTcpFailed(session),
+        .DelayOpenTimerExpired => return try handleDelayOpenExpired(session),
         .OpenReceived => |openMsg| return try handleOpenReceived(session, openMsg),
         // Start events are ignored
         .Start => return .keep,

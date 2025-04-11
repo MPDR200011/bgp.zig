@@ -76,6 +76,8 @@ pub fn Timer(Context: type) type {
                 self.executorRunning = true;
                 self.shouldRun = true;
                 self.finishedRunning = false;
+
+                std.log.debug("Scheduling timer with {} ms delay", .{delay_ms});
             }
 
             self.executorThread = try std.Thread.spawn(.{}, Self.executorFunction, .{self});
@@ -91,14 +93,18 @@ pub fn Timer(Context: type) type {
                 }
 
                 self.shouldRun = false;
+                self.waitCondition.signal();
             }
 
-            self.waitCondition.signal();
-            self.executorThread.?.join();
+            if (self.executorThread) |t| {
+                t.join();
+            }
         }
 
         pub fn join(self: *Self) void {
-            self.executorThread.?.join();
+            if (self.executorThread) |t| {
+                t.join();
+            }
         }
 
         pub fn reschedule(self: *Self) !void {

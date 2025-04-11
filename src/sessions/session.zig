@@ -1,5 +1,6 @@
 const std = @import("std");
 const zul = @import("zul");
+const ip = @import("ip");
 const timer = @import("../utils/timer.zig");
 
 const connections = @import("connections.zig");
@@ -107,7 +108,7 @@ fn connectionStartThread(ctx: StartConnContext) void {
 
     std.debug.assert(ctx.session.peerConnection == null);
 
-    const peerAddress = std.net.Address.parseIp(ctx.session.parent.sessionAddresses.peerAddress, ctx.session.parent.sessionPorts.peerPort) catch unreachable;
+    const peerAddress = std.net.Address.initIp4(ctx.session.parent.sessionAddresses.peerAddress.address, ctx.session.parent.sessionPorts.peerPort);
     const peerConnection = std.net.tcpConnectToAddress(peerAddress) catch |err| {
         std.log.err("Failed to establish TCP connection with peer: {}", .{err});
 
@@ -323,6 +324,8 @@ pub const Session = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
+        std.log.debug("Handling event: {s}", .{@tagName(event)});
+
         const nextAction = self.invokeHandler(event) catch |err| {
             std.log.err("Failed to handle event {s} with error: {}", .{ @tagName(event), err });
             return;
@@ -332,13 +335,23 @@ pub const Session = struct {
             .Transition => |nextState| self.switchState(nextState),
             .Keep => return,
         }
+
+        std.log.debug("Finished handling event: {s}", .{@tagName(event)});
     }
 };
 
-pub const PeerSessionAddresses = struct {
-    localAddress: []const u8,
-    peerAddress: []const u8,
-};
+pub fn PeerSessionAddresses(comptime afi: type) type {
+    if (afi != ip.IpV4Address and afi != ip.IpV6Address) {
+        @compileError("Invalid Ip Address Type");
+    }
+
+    return struct {
+        localAddress: afi,
+        peerAddress: afi,
+    };
+}
+
+pub const v4PeerSessionAddresses = PeerSessionAddresses(ip.IpV4Address);
 
 pub const PeerSessionPorts = struct {
     localPort: u16,
@@ -353,7 +366,7 @@ pub const PeerConfig = struct {
     delayOpen: bool,
     delayOpen_ms: u32 = 0,
 
-    sessionAddresses: PeerSessionAddresses,
+    sessionAddresses: v4PeerSessionAddresses,
     sessionPorts: PeerSessionPorts,
 };
 pub const Peer = struct {
@@ -366,7 +379,7 @@ pub const Peer = struct {
     delayOpen: bool,
     delayOpen_ms: u32 = 0,
 
-    sessionAddresses: PeerSessionAddresses,
+    sessionAddresses: v4PeerSessionAddresses,
     sessionPorts: PeerSessionPorts,
     session: Session,
 
