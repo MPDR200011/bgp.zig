@@ -103,13 +103,7 @@ fn handleUpdateReceived(session: *Session, msg: model.UpdateMessage) !PostHandle
 }
 
 fn handleOtherEvents(session: *Session) !PostHandlerAction {
-    const msg: model.NotificationMessage = .initNoData(.FSMError, .Default);
-    try session.messageEncoder.writeMessage(.{ .NOTIFICATION = msg }, session.peerConnection.?.writer().any());
-
-    session.killAllTimers();
-    std.debug.print("OTHER", .{});
-    session.closeConnection();
-    session.connectionRetryCount += 1;
+    session.shutdownFatal();
 
     // TODO: Peer Oscillation goes here, if ever
 

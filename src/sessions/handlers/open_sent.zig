@@ -97,12 +97,7 @@ pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !
 }
 
 pub fn handleOtherEvents(session: *Session) !PostHandlerAction {
-    const msg: model.NotificationMessage = .initNoData(.FSMError, .Default);
-    try session.messageEncoder.writeMessage(.{ .NOTIFICATION = msg }, session.peerConnection.?.writer().any());
-
-    session.killAllTimers();
-    session.closeConnection();
-    session.connectionRetryCount += 1;
+    session.shutdownFatal();
 
     // TODO: Peer Oscillation goes here, if ever
 

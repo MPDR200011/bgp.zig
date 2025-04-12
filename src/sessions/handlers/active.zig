@@ -118,10 +118,7 @@ pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !
 }
 
 pub fn handleOtherEvents(session: *Session) !PostHandlerAction {
-    session.killAllTimers();
-
-    session.closeConnection();
-    session.connectionRetryCount += 1;
+    session.shutdownFatal();
 
     // TODO: Peer Oscillation goes here, if ever
 

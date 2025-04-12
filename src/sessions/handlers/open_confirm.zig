@@ -11,7 +11,7 @@ const CollisionContext = sessionLib.CollisionContext;
 
 fn handleStop(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
-    try session.sendMessage(.{.NOTIFICATION = msg});
+    try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.releaseResources();
     session.closeConnection();
@@ -26,7 +26,7 @@ fn handleStop(session: *Session) !PostHandlerAction {
 
 fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.HoldTimerExpired, .Default);
-    try session.sendMessage(.{.NOTIFICATION = msg});
+    try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.releaseResources();
     session.closeConnection();
@@ -42,7 +42,7 @@ fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
 fn handleKeepAliveTimerExpires(session: *Session) !PostHandlerAction {
     std.log.debug("Sending KEEPALIVE", .{});
 
-    try session.sendMessage(.{.KEEPALIVE = .{}});
+    try session.sendMessage(.{ .KEEPALIVE = .{} });
 
     try session.keepAliveTimer.reschedule();
 
@@ -62,7 +62,7 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
 
 fn handleConnectionCollision(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
-    try session.sendMessage(.{.NOTIFICATION = msg});
+    try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
     session.releaseResources();
@@ -99,18 +99,12 @@ pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !
 }
 
 fn handleOtherEvents(session: *Session) !PostHandlerAction {
-    const msg: model.NotificationMessage = .initNoData(.FSMError, .Default);
-    try session.messageEncoder.writeMessage(.{.NOTIFICATION = msg}, session.peerConnection.?.writer().any());
-
-    session.killAllTimers();
-    session.closeConnection();
-    session.connectionRetryCount += 1;
+    session.shutdownFatal();
 
     // TODO: Peer Oscillation goes here, if ever
 
     return .transition(.IDLE);
 }
-
 
 pub fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
     switch (event) {

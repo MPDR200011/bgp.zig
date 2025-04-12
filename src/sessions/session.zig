@@ -230,7 +230,25 @@ pub const Session = struct {
         };
     }
 
-    pub fn killAllTimers(self: *Self) void {
+    pub fn shutdownFatal(self: *Self) void {
+        std.log.info("Initiated fatal shutdown!", .{});
+
+        switch (self.state) {
+            .OPEN_SENT, .OPEN_CONFIRM, .ESTABLISHED => {
+                const msg: messageModel.NotificationMessage = .initNoData(.FSMError, .Default);
+                self.sendMessage(.{ .NOTIFICATION = msg }) catch |err| {
+                    std.log.err("Failed to send notification during fatal shutdown: {}", .{err});
+                };
+            },
+            .IDLE, .CONNECT, .ACTIVE => {},
+        }
+
+        self.killAllTimers();
+        self.closeConnection();
+        self.connectionRetryCount += 1;
+    }
+
+    fn killAllTimers(self: *Self) void {
         self.connectionRetryTimer.cancel();
         self.holdTimer.cancel();
         self.keepAliveTimer.cancel();
