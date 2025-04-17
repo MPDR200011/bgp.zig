@@ -23,7 +23,7 @@ fn readIntoRoute(self: Self, route: *Route) !u16 {
     std.debug.assert(prefixByteLength <= 4);
 
     route.prefixLength = prefixLength;
-    route.prefixData = [4]u8{0,0,0,0};
+    route.prefixData = [4]u8{ 0, 0, 0, 0 };
 
     var bitsToRead: i32 = @intCast(prefixLength);
     for (0..prefixByteLength) |i| {
@@ -95,7 +95,7 @@ pub fn readUpdateMessage(self: Self, messageLength: u16) !model.UpdateMessage {
     const routeAttributes = try self.readAttributes(attributesLength);
     defer routeAttributes.deinit();
 
-    const advertisedLength = messageLength - withdrawnLength - attributesLength;
+    const advertisedLength = messageLength - withdrawnLength - attributesLength - 4;
     const advertisedRoutes = try self.readRoutes(advertisedLength);
     defer advertisedRoutes.deinit();
 
@@ -183,4 +183,54 @@ test "readRoutes()" {
         Route{ .prefixLength = 12, .prefixData = [_]u8{ 192, 0b10110000, 0, 0 } },
     };
     try testing.expectEqualSlices(Route, expectedRoutes[0..], routes.items);
+}
+
+test "readUpdateMessage()" {
+    const messageBuffer = [_]u8{
+        //Withdrawn length
+        0,
+        3,
+        // R3
+        // Length
+        12,
+        // Route
+        192,
+        0b10111111,
+        // Attributes Length
+        0,
+        0,
+        // Advertised
+        // R1
+        // Length
+        32,
+        // Route
+        192,
+        168,
+        0,
+        42,
+        // R2
+        // Length
+        16,
+        // Route
+        192,
+        168,
+    };
+
+    var stream = std.io.fixedBufferStream(messageBuffer[0..]);
+
+    const updateReader = Self{
+        .allocator = testing.allocator,
+        .reader = stream.reader().any(),
+    };
+    const message = try updateReader.readUpdateMessage(messageBuffer.len);
+    defer message.deinit();
+
+    try testing.expectEqual(stream.getPos(), messageBuffer.len);
+
+    try testing.expectEqual(0, message.pathAttributes.len);
+    try testing.expectEqualSlices(Route, &[_]Route{Route{ .prefixLength = 12, .prefixData = [_]u8{ 192, 0b10110000, 0, 0 } }}, message.withdrawnRoutes);
+    try testing.expectEqualSlices(Route, &[_]Route{
+        Route{ .prefixLength = 32, .prefixData = [_]u8{ 192, 168, 0, 42 } },
+        Route{ .prefixLength = 16, .prefixData = [_]u8{ 192, 168, 0, 0 } },
+    }, message.advertisedRoutes);
 }

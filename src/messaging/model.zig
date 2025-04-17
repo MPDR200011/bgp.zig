@@ -122,7 +122,7 @@ pub const UpdateMessage = struct {
         };
     }
 
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *const Self) void {
         self.alloc.free(self.withdrawnRoutes);
         self.alloc.free(self.advertisedRoutes);
         self.alloc.free(self.pathAttributes);
