@@ -10,8 +10,6 @@ pub const OpenMessage = struct { version: u8, asNumber: u16, holdTime: u16, peer
 
 pub const KeepAliveMessage = struct {};
 
-pub const UpdateMessage = struct {};
-
 
 pub const ErrorCode = enum(u8) {
     HeaderError = 1,
@@ -84,6 +82,54 @@ pub const NotificationMessage = struct {
     }
 };
 
+pub const Route = struct {
+    prefixLength: u8,
+    prefixData: [4]u8,
+
+    const default: Route = .{
+        .prefixLength = 0,
+        .prefixData = []u8{0} ** 4
+    };
+};
+pub const PathAttribute = struct {};
+pub const UpdateMessage = struct {
+    const Self = @This();
+
+    alloc: std.mem.Allocator,
+    withdrawnRoutes: []Route,
+    advertisedRoutes: []Route,
+    pathAttributes: []PathAttribute,
+
+    pub fn init(allocator: std.mem.Allocator, withdrawnRoutes: []Route, advertisedRoutes: []Route, pathAttributes: []PathAttribute) !Self {
+
+        const wR = try allocator.alloc(Route, withdrawnRoutes.len);
+        errdefer allocator.free(wR);
+        std.mem.copyForwards(Route, wR, withdrawnRoutes);
+
+        const aR = try allocator.alloc(Route, advertisedRoutes.len);
+        errdefer allocator.free(aR);
+        std.mem.copyForwards(Route, aR, advertisedRoutes);
+
+        const pA = try allocator.alloc(PathAttribute, pathAttributes.len);
+        errdefer allocator.free(pA);
+        std.mem.copyForwards(PathAttribute, pA, pathAttributes);
+
+        return Self{
+            .alloc = allocator,
+            .withdrawnRoutes = wR,
+            .advertisedRoutes = aR,
+            .pathAttributes = pA,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.alloc.free(self.withdrawnRoutes);
+        self.alloc.free(self.advertisedRoutes);
+        self.alloc.free(self.pathAttributes);
+    }
+};
+
+
 pub const BgpMessageType = enum(u8) {
     // 1 - OPEN
     OPEN = 1,
@@ -95,4 +141,16 @@ pub const BgpMessageType = enum(u8) {
     KEEPALIVE = 4,
 };
 
-pub const BgpMessage = union(BgpMessageType) { OPEN: OpenMessage, UPDATE: UpdateMessage, NOTIFICATION: NotificationMessage, KEEPALIVE: KeepAliveMessage };
+pub const BgpMessage = union(BgpMessageType) {
+    const Self = @This();
+
+    OPEN: OpenMessage, UPDATE: UpdateMessage, NOTIFICATION: NotificationMessage, KEEPALIVE: KeepAliveMessage,
+
+    pub fn deinit(self: Self) void {
+        switch (self) {
+            .UPDATE => |msg| msg.deinit(),
+            .NOTIFICATION => |msg| msg.deinit(),
+            else => {},
+        }
+    }
+};
