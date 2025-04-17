@@ -1,4 +1,4 @@
-name: Build
+name: Standard Checks
 
 on:
   pull_request:
@@ -20,3 +20,13 @@ jobs:
           zig-version: 0.14.0
           target-platform: x86_64-linux
       - run: zig build
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: korandoru/setup-zig@v1
+        with:
+          zig-version: 0.14.0
+          target-platform: x86_64-linux
+      - run: zig build test
