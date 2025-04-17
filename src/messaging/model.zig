@@ -1,4 +1,5 @@
 const std = @import("std");
+const ip = @import("ip");
 
 const Allocator = std.mem.Allocator;
 
@@ -91,7 +92,33 @@ pub const Route = struct {
         .prefixData = []u8{0} ** 4
     };
 };
-pub const PathAttribute = struct {};
+
+pub const Origin = enum {
+    IGP,EGP,INCOMPLETE,
+};
+
+pub const ASPathSegment = union(enum) {
+    AS_Set: []u16,
+    AS_Sequence: []u16,
+};
+
+pub const ASPath = []ASPathSegment;
+
+pub const Aggregator = struct {
+    as: u16,
+    address: ip.IpV4Address,
+};
+
+pub const PathAttribute = struct {
+    ORIGIN: Origin,
+    AS_PATH: ASPath,
+    NEXTHOP: ip.IpV4Address,
+    MULTI_EXIT_DISC: u32,
+    LOCAL_PREF: u32,
+    ATOMIC_AGGREGATE: void,
+    AGGREGATOR: Aggregator,
+};
+
 pub const UpdateMessage = struct {
     const Self = @This();
 
