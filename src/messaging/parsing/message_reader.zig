@@ -33,11 +33,13 @@ pub const MessageReader = struct {
     pub fn readMessage(self: *Self) !model.BgpMessage {
         const messageHeader = try headerReader.readHeader(self.reader);
 
+        const messageLength = messageHeader.messageLength - consts.HEADER_LENGTH;
+
         return switch (messageHeader.messageType) {
             .OPEN => .{ .OPEN = try openReader.readOpenMessage(self.reader)},
             .KEEPALIVE => .{ .KEEPALIVE = .{} },
-            .NOTIFICATION => .{ .NOTIFICATION = try notificationReader.readNotificationMessage(self.reader, messageHeader.messageLength - consts.HEADER_LENGTH - 2, self.allocator) },
             .UPDATE => .{ .KEEPALIVE = .{} },
+            .NOTIFICATION => .{ .NOTIFICATION = try notificationReader.readNotificationMessage(self.reader, messageLength, self.allocator) },
         };
 
     }

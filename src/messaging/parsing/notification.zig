@@ -42,7 +42,9 @@ pub fn getErrorKindFromMessageValue(errorCode: model.ErrorCode, msgValue: u8) !m
     }
 }
 
-pub fn readNotificationMessage(r: std.io.AnyReader, dataLength: usize, allocator: std.mem.Allocator) !model.NotificationMessage {
+pub fn readNotificationMessage(r: std.io.AnyReader, messageLength: u16, allocator: std.mem.Allocator) !model.NotificationMessage {
+    const dataLength = messageLength - 2;
+
     const errorCode: model.ErrorCode = @enumFromInt(try r.readInt(u8, .big));
     const errorSubCode = try r.readInt(u8, .big);
 
