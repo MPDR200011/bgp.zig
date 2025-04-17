@@ -5,6 +5,7 @@ const consts = @import("../consts.zig");
 const headerReader = @import("header.zig");
 const openReader = @import("open.zig");
 const notificationReader = @import("notification.zig");
+const updateReader = @import("update.zig");
 
 pub const MessageReader = struct {
     const Self = @This();
@@ -38,8 +39,12 @@ pub const MessageReader = struct {
         return switch (messageHeader.messageType) {
             .OPEN => .{ .OPEN = try openReader.readOpenMessage(self.reader)},
             .KEEPALIVE => .{ .KEEPALIVE = .{} },
-            .UPDATE => .{ .KEEPALIVE = .{} },
             .NOTIFICATION => .{ .NOTIFICATION = try notificationReader.readNotificationMessage(self.reader, messageLength, self.allocator) },
+            .UPDATE => .{ .UPDATE = try (updateReader.UpdateMsgParser{
+                .allocator = self.allocator,
+                .reader = self.reader
+            }).readUpdateMessage(messageLength)
+        },
         };
 
     }

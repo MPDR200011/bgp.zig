@@ -290,3 +290,7 @@ pub fn main() !void {
         acceptThread.join();
     }
 }
+
+test {
+ _ =   @import("messaging/parsing/update.zig");
+}
