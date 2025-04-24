@@ -193,8 +193,22 @@ pub const Session = struct {
             .peerConnectionThread = null,
             .messageEncoder = .init(alloc),
             .allocator = alloc,
-            .eventQueue = try .init(alloc, .{ .count = 1, .backlog = 10 }),
+            .eventQueue = try .init(alloc, .{ .count = 1, .backlog = 1 }),
         };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.releaseResources();
+        self.closeConnection();
+
+        self.messageEncoder.deinit();
+
+        self.connectionRetryTimer.deinit();
+        self.holdTimer.deinit();
+        self.keepAliveTimer.deinit();
+        self.delayOpenTimer.deinit();
+
+        self.eventQueue.deinit(self.allocator);
     }
 
     pub fn releaseResources(self: *Self) void {
@@ -253,20 +267,6 @@ pub const Session = struct {
         self.holdTimer.cancel();
         self.keepAliveTimer.cancel();
         self.delayOpenTimer.cancel();
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.releaseResources();
-        self.closeConnection();
-
-        self.messageEncoder.deinit();
-
-        self.connectionRetryTimer.deinit();
-        self.holdTimer.deinit();
-        self.keepAliveTimer.deinit();
-        self.delayOpenTimer.deinit();
-
-        self.eventQueue.deinit(self.allocator);
     }
 
     pub fn setPeerConnection(self: *Self, connection: std.net.Stream) !void {
