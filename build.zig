@@ -25,15 +25,18 @@ const testFiles = [_][]const u8{
     "src/main.zig",
 };
 
-fn setupTests(b: *std.Build) void {
+fn setupTests(b: *std.Build, modules: []const SetupModule) void {
     const test_step = b.step("test", "Run unit tests");
 
     for (test_targets) |test_target| {
         for (testFiles) |testFile| {
             const unit_tests = b.addTest(.{
-                .root_source_file = b.path(testFile),
-                .target = b.resolveTargetQuery(test_target),
+                .root_module = b.createModule(.{ .root_source_file = b.path(testFile), .target = b.resolveTargetQuery(test_target) })
             });
+
+            for (modules) |mod| {
+                unit_tests.root_module.addImport(mod.name, mod.mod);
+            }
 
             const run_unit_tests = b.addRunArtifact(unit_tests);
             run_unit_tests.skip_foreign_checks = true;
@@ -50,9 +53,6 @@ fn setupExe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     for (modules) |mod| {
         exe.root_module.addImport(mod.name, mod.mod);
     }
-    exe.root_module.addImport("clap", b.dependency("clap", .{ .target = target, .optimize = optimize }).module("clap"));
-    exe.root_module.addImport("zul", b.dependency("zul", .{ .target = target, .optimize = optimize }).module("zul"));
-    exe.root_module.addImport("ip", b.dependency("ip_zig", .{ .target = target, .optimize = optimize }).module("ip"));
 
     b.installArtifact(exe);
 
@@ -65,8 +65,12 @@ fn setupExe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     run_step.dependOn(&run_exe.step);
 }
 
-fn setupModule(b: *std.Build, name: []const u8, root_source_file: []const u8) SetupModule {
+fn createLibraryModule(b: *std.Build, name: []const u8, root_source_file: []const u8) SetupModule {
     return .{ .name = name, .mod = b.addModule(name, .{ .root_source_file = b.path(root_source_file) }) };
+}
+
+fn createDependencyModule(b: *std.Build, name: []const u8, dependency_name: []const u8, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) SetupModule {
+    return .{ .name = name, .mod = b.dependency(dependency_name, .{.target = target, .optimize=optimize}).module(name)};
 }
 
 pub fn build(b: *std.Build) void {
@@ -74,7 +78,10 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const modules = [_]SetupModule{
-        setupModule(b, "timer", "src/utils/timer.zig"),
+        createLibraryModule(b, "timer", "src/utils/timer.zig"),
+        createDependencyModule(b, "clap", "clap", target, optimize),
+        createDependencyModule(b, "zul", "zul", target, optimize),
+        createDependencyModule(b, "ip", "ip_zig", target, optimize),
     };
 
     const exes = [_]ExeSpec{
@@ -86,5 +93,5 @@ pub fn build(b: *std.Build) void {
         setupExe(b, target, optimize, &modules, &exeSpec);
     }
 
-    setupTests(b);
+    setupTests(b, &modules);
 }
