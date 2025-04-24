@@ -4,6 +4,7 @@ const model = @import("../model.zig");
 const messageHeader = @import("header.zig");
 const openMessage = @import("open.zig");
 const notificationMessage = @import("notification.zig");
+const updateMessage = @import("update.zig");
 
 const EncodingError = error{
     UnsupportedMsgType,
@@ -21,11 +22,6 @@ pub const MessageEncoder = struct {
     pub fn deinit(_: Self) void {}
 
     pub fn writeMessage(self: *Self, msg: model.BgpMessage, messageWriter: std.io.AnyWriter) !void {
-        if (msg == .KEEPALIVE) {
-            try messageHeader.writeHeader(messageWriter, 0, .KEEPALIVE);
-            return;
-        }
-
         var bodyBuffer = std.ArrayList(u8).init(self.allocator);
         // TODO implement message size limits
         defer bodyBuffer.deinit();
@@ -39,10 +35,15 @@ pub const MessageEncoder = struct {
             .NOTIFICATION => |notification| {
                 try notificationMessage.writeNotification(notification, bodyWriter);
             },
-            .KEEPALIVE => unreachable,
+            .UPDATE => |update| {
+                try updateMessage.writeUpdateBody(update, bodyWriter);
+            },
+            .KEEPALIVE => {},
             else => return EncodingError.UnsupportedMsgType,
         }
 
+        // FIXME: We might want to put an ultimate "write limit" to prevent 
+        // messages that are to large from being sent
         try messageHeader.writeHeader(messageWriter, @intCast(bodyBuffer.items.len), msg);
         _ = try messageWriter.writeAll(bodyBuffer.items);
     }

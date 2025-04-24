@@ -123,11 +123,11 @@ pub const UpdateMessage = struct {
     const Self = @This();
 
     alloc: std.mem.Allocator,
-    withdrawnRoutes: []Route,
-    advertisedRoutes: []Route,
+    withdrawnRoutes: []const Route,
+    advertisedRoutes: []const Route,
     pathAttributes: []PathAttribute,
 
-    pub fn init(allocator: std.mem.Allocator, withdrawnRoutes: []Route, advertisedRoutes: []Route, pathAttributes: []PathAttribute) !Self {
+    pub fn init(allocator: std.mem.Allocator, withdrawnRoutes: []const Route, advertisedRoutes: []const Route, pathAttributes: []PathAttribute) !Self {
 
         const wR = try allocator.alloc(Route, withdrawnRoutes.len);
         errdefer allocator.free(wR);

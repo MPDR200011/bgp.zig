@@ -293,4 +293,5 @@ pub fn main() !void {
 
 test {
  _ =   @import("messaging/parsing/update.zig");
+ _ =   @import("messaging/encoding/update.zig");
 }
