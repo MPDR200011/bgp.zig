@@ -109,14 +109,36 @@ pub const Aggregator = struct {
     address: ip.IpV4Address,
 };
 
-pub const PathAttribute = struct {
-    ORIGIN: Origin,
-    AS_PATH: ASPath,
-    NEXTHOP: ip.IpV4Address,
-    MULTI_EXIT_DISC: u32,
-    LOCAL_PREF: u32,
-    ATOMIC_AGGREGATE: void,
-    AGGREGATOR: Aggregator,
+pub const PathAttributes = struct {
+    const Self = @This();
+    // Well known, Mandatory
+    origin: Origin,
+    asPath: ASPath,
+    nexthop: ip.IpV4Address,
+
+    // Well known
+    // Mandatory for internal peers or confeds
+    localPref: u32,
+
+    // Well known, discretionary
+    atomicAggregate: bool,
+
+    // Optional, non-transitive
+    multiExitDiscriminator: ?u32,
+
+    // Optional, transitive
+    aggregator: ?Aggregator,
+
+    fn clone(self: Self, allocator: std.mem.Allocator) Self {
+        _ = allocator;
+        @compileError("Complete this before I forget");
+        return Self{
+            .allocator = self.allocator,
+            .origin = self.origin,
+            // FIXME this is heap memory
+            .asPath = self.asPath
+        };
+    }
 };
 
 pub const UpdateMessage = struct {
@@ -125,9 +147,9 @@ pub const UpdateMessage = struct {
     alloc: std.mem.Allocator,
     withdrawnRoutes: []const Route,
     advertisedRoutes: []const Route,
-    pathAttributes: []PathAttribute,
+    pathAttributes: PathAttributes,
 
-    pub fn init(allocator: std.mem.Allocator, withdrawnRoutes: []const Route, advertisedRoutes: []const Route, pathAttributes: []PathAttribute) !Self {
+    pub fn init(allocator: std.mem.Allocator, withdrawnRoutes: []const Route, advertisedRoutes: []const Route, pathAttributes: PathAttributes) !Self {
 
         const wR = try allocator.alloc(Route, withdrawnRoutes.len);
         errdefer allocator.free(wR);
@@ -137,15 +159,11 @@ pub const UpdateMessage = struct {
         errdefer allocator.free(aR);
         std.mem.copyForwards(Route, aR, advertisedRoutes);
 
-        const pA = try allocator.alloc(PathAttribute, pathAttributes.len);
-        errdefer allocator.free(pA);
-        std.mem.copyForwards(PathAttribute, pA, pathAttributes);
-
         return Self{
             .alloc = allocator,
             .withdrawnRoutes = wR,
             .advertisedRoutes = aR,
-            .pathAttributes = pA,
+            .pathAttributes = pathAttributes,
         };
     }
 
