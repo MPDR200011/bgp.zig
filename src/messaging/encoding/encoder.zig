@@ -39,7 +39,6 @@ pub const MessageEncoder = struct {
                 try updateMessage.writeUpdateBody(update, bodyWriter);
             },
             .KEEPALIVE => {},
-            else => return EncodingError.UnsupportedMsgType,
         }
 
         // FIXME: We might want to put an ultimate "write limit" to prevent 

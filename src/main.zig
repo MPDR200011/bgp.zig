@@ -19,6 +19,8 @@ const bgpEncoding = @import("messaging/encoding/encoder.zig");
 const v4PeerSessionAddresses = session.v4PeerSessionAddresses;
 const Peer = session.Peer;
 
+const rib = @import("rib/table.zig");
+
 pub const std_options: std.Options = .{
     // Set the log level to info
     .log_level = .debug,
@@ -232,6 +234,8 @@ pub fn main() !void {
     const localPort = res.args.local_port orelse 179;
     const peerPort = res.args.peer_port orelse 179;
 
+    var mainRib = rib.Rib.init(gpa);
+
     var peerMap = PeerMap.init(gpa);
     defer {
         var it = peerMap.valueIterator();
@@ -259,7 +263,7 @@ pub fn main() !void {
                 .localPort = localPort,
                 .peerPort = peerPort,
             },
-        }, peer, gpa) catch |err| {
+        }, peer, gpa, &mainRib) catch |err| {
             std.log.err("Failed to initialize peer memory: {}", .{err});
             return err;
         };

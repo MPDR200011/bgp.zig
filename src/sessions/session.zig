@@ -13,6 +13,8 @@ const openSentHandler = @import("handlers/open_sent.zig");
 const openConfirmHandler = @import("handlers/open_confirm.zig");
 const establishedHandler = @import("handlers/established.zig");
 
+const rib = @import("../rib/table.zig");
+
 const Timer = timer.Timer;
 
 pub const SessionState = enum(u8) {
@@ -177,7 +179,9 @@ pub const Session = struct {
 
     eventQueue: *zul.ThreadPool(Self.handleEvent),
 
-    pub fn init(parent: *Peer, alloc: std.mem.Allocator) !Self {
+    targetRib: *rib.Rib,
+
+    pub fn init(parent: *Peer, alloc: std.mem.Allocator, targetRib: *rib.Rib) !Self {
         return .{
             .state = .IDLE,
             .parent = parent,
@@ -194,6 +198,7 @@ pub const Session = struct {
             .messageEncoder = .init(alloc),
             .allocator = alloc,
             .eventQueue = try .init(alloc, .{ .count = 1, .backlog = 1 }),
+            .targetRib = targetRib,
         };
     }
 
@@ -403,7 +408,7 @@ pub const Peer = struct {
 
     mutex: std.Thread.Mutex,
 
-    pub fn init(cfg: PeerConfig, self: *Self, alloc: std.mem.Allocator) !Self {
+    pub fn init(cfg: PeerConfig, self: *Self, alloc: std.mem.Allocator, targetRib: *rib.Rib) !Self {
         return .{
             .localAsn = cfg.localAsn,
             .holdTime = cfg.holdTime,
@@ -413,7 +418,7 @@ pub const Peer = struct {
             .delayOpen_ms = cfg.delayOpen_ms,
             .sessionAddresses = cfg.sessionAddresses,
             .sessionPorts = cfg.sessionPorts,
-            .session = try .init(self, alloc),
+            .session = try .init(self, alloc, targetRib),
             .mutex = .{},
         };
     }
