@@ -87,9 +87,9 @@ pub const Route = struct {
     prefixLength: u8,
     prefixData: [4]u8,
 
-    const default: Route = .{
+    pub const default: Route = .{
         .prefixLength = 0,
-        .prefixData = []u8{0} ** 4
+        .prefixData = [_]u8{0} ** 4
     };
 };
 
