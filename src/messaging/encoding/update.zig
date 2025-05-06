@@ -131,7 +131,7 @@ test "writeUpdateBody()" {
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
         }, 
-        PathAttributes{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null},
+        PathAttributes{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null},
     );
     defer msg.deinit();
 

@@ -81,7 +81,7 @@ fn readAttributes(self: Self, attributesLength: u16) !PathAttributes {
         return UpdateParsingError.AttributesLengthInconsistent;
     }
 
-    return PathAttributes{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null};
+    return PathAttributes{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null};
 }
 
 pub fn readUpdateMessage(self: Self, messageLength: u16) !model.UpdateMessage {
