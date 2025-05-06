@@ -102,7 +102,7 @@ pub const ASPathSegment = union(enum) {
     AS_Sequence: []u16,
 };
 
-pub const ASPath = []ASPathSegment;
+pub const ASPath = []const ASPathSegment;
 
 pub const Aggregator = struct {
     as: u16,
@@ -129,10 +129,14 @@ pub const PathAttributes = struct {
     // Optional, transitive
     aggregator: ?Aggregator,
 
-    fn clone(self: Self, allocator: std.mem.Allocator) Self {
+    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+        allocator.free(self.asPath);
+    }
+
+    pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
         return Self{
             .origin = self.origin,
-            .asPath = allocator.dupe(ASPathSegment, self.asPath),
+            .asPath = try allocator.dupe(ASPathSegment, self.asPath),
             .nexthop = self.nexthop,
             .localPref = self.localPref,
             .atomicAggregate = self.atomicAggregate,
@@ -164,14 +168,14 @@ pub const UpdateMessage = struct {
             .alloc = allocator,
             .withdrawnRoutes = wR,
             .advertisedRoutes = aR,
-            .pathAttributes = pathAttributes,
+            .pathAttributes = try pathAttributes.clone(allocator),
         };
     }
 
     pub fn deinit(self: *const Self) void {
         self.alloc.free(self.withdrawnRoutes);
         self.alloc.free(self.advertisedRoutes);
-        self.alloc.free(self.pathAttributes);
+        self.pathAttributes.deinit(self.alloc);
     }
 };
 

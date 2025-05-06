@@ -1,6 +1,9 @@
 const std = @import("std");
+const ip = @import("ip");
 const consts = @import("../consts.zig");
 const model = @import("../model.zig");
+
+const PathAttributes = model.PathAttributes;
 
 fn calculateRoutesLength(routes: []const model.Route) usize {
     var total: usize = 0;
@@ -23,13 +26,13 @@ fn writeRoutes(routes: []const model.Route, writer: std.io.AnyWriter) !void {
     }
 }
 
-fn calculateAttributesLength(attrs: []const model.PathAttribute) usize {
+fn calculateAttributesLength(attrs: PathAttributes) usize {
     // FIXME complete dis
     _ = attrs;
     return 0;
 }
 
-fn writeAttributes(attrs: []const model.PathAttribute, writer: std.io.AnyWriter) !void {
+fn writeAttributes(attrs: PathAttributes, writer: std.io.AnyWriter) !void {
     // FIXME complete dis
     _ = attrs;
     _ = writer;
@@ -128,7 +131,7 @@ test "writeUpdateBody()" {
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
         }, 
-        &.{}
+        PathAttributes{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null},
     );
     defer msg.deinit();
 
