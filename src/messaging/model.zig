@@ -130,13 +130,14 @@ pub const PathAttributes = struct {
     aggregator: ?Aggregator,
 
     fn clone(self: Self, allocator: std.mem.Allocator) Self {
-        _ = allocator;
-        @compileError("Complete this before I forget");
         return Self{
-            .allocator = self.allocator,
             .origin = self.origin,
-            // FIXME this is heap memory
-            .asPath = self.asPath
+            .asPath = allocator.dupe(ASPathSegment, self.asPath),
+            .nexthop = self.nexthop,
+            .localPref = self.localPref,
+            .atomicAggregate = self.atomicAggregate,
+            .multiExitDiscriminator = self.multiExitDiscriminator,
+            .aggregator = self.aggregator,
         };
     }
 };
