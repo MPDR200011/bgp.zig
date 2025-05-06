@@ -98,11 +98,48 @@ pub const Origin = enum {
 };
 
 pub const ASPathSegment = union(enum) {
+    const Self = @This();
+
     AS_Set: []u16,
     AS_Sequence: []u16,
+
+    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .AS_Set => |e| return allocator.free(e),
+            .AS_Sequence => |e| return allocator.free(e),
+        }
+    }
+
+    pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
+        switch (self) {
+            .AS_Set => |e| return .{.AS_Set = try allocator.dupe(u16, e)},
+            .AS_Sequence => |e| return .{.AS_Sequence = try allocator.dupe(u16, e)},
+        }
+    }
 };
 
-pub const ASPath = []const ASPathSegment;
+pub const ASPath = struct {
+    const Self = @This();
+
+    segments: []const ASPathSegment,
+
+    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+        for (self.segments) |seg| {
+            seg.deinit(allocator);
+        }
+        allocator.free(self.segments);
+    }
+
+    pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
+        const newASPath = try allocator.alloc(ASPathSegment, self.segments.len);
+
+        for (0..newASPath.len) |i| {
+            newASPath[i] = try self.segments[i].clone(allocator);
+        }
+
+        return Self{.segments = newASPath};
+    }
+};
 
 pub const Aggregator = struct {
     as: u16,
@@ -130,13 +167,13 @@ pub const PathAttributes = struct {
     aggregator: ?Aggregator,
 
     pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
-        allocator.free(self.asPath);
+        self.asPath.deinit(allocator);
     }
 
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
         return Self{
             .origin = self.origin,
-            .asPath = try allocator.dupe(ASPathSegment, self.asPath),
+            .asPath = try self.asPath.clone(allocator),
             .nexthop = self.nexthop,
             .localPref = self.localPref,
             .atomicAggregate = self.atomicAggregate,

@@ -144,7 +144,7 @@ test "Add Route" {
 
     const route: Route = .default;
 
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
     try testing.expectEqual(ribEntry.route, Route.default);
@@ -155,7 +155,7 @@ test "Add Route" {
     const attrs: PathAttributes = routePath.attrs;
 
     try testing.expectEqual(model.Origin.EGP, attrs.origin);
-    try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath);
+    try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath.segments);
     try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 1), attrs.nexthop);
 
     try testing.expectEqual(100, attrs.localPref);
@@ -171,9 +171,9 @@ test "Set Route" {
 
     const route: Route = .default;
 
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 2) }, .{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(127, 0, 0, 2), .localPref = 200, .atomicAggregate = true, .multiExitDiscriminator = 69420, .aggregator = null});
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 2) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 2), .localPref = 200, .atomicAggregate = true, .multiExitDiscriminator = 69420, .aggregator = null});
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null});
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
     try testing.expectEqual(ribEntry.route, Route.default);
@@ -184,7 +184,7 @@ test "Set Route" {
         const attrs: PathAttributes = routePath.attrs;
 
         try testing.expectEqual(model.Origin.EGP, attrs.origin);
-        try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath);
+        try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath.segments);
         try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 1), attrs.nexthop);
 
         try testing.expectEqual(142, attrs.localPref);
@@ -201,7 +201,7 @@ test "Set Route" {
         const attrs: PathAttributes = routePath.attrs;
 
         try testing.expectEqual(model.Origin.EGP, attrs.origin);
-        try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath);
+        try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath.segments);
         try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 2), attrs.nexthop);
 
         try testing.expectEqual(200, attrs.localPref);
@@ -218,8 +218,8 @@ test "Remove Route" {
 
     const route: Route = .default;
 
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null});
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
     try testing.expectEqual(ribEntry.route, Route.default);
@@ -230,7 +230,7 @@ test "Remove Route" {
         const attrs: PathAttributes = routePath.attrs;
 
         try testing.expectEqual(model.Origin.EGP, attrs.origin);
-        try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath);
+        try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath.segments);
         try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 1), attrs.nexthop);
 
         try testing.expectEqual(142, attrs.localPref);
