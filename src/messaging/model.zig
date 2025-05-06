@@ -119,6 +119,7 @@ pub const ASPathSegment = union(enum) {
 };
 
 pub const ASPath = struct {
+    // FIXME: Cloning logic should really be tested to ensure stuff lands on separate buffers
     const Self = @This();
 
     segments: []const ASPathSegment,
@@ -139,6 +140,8 @@ pub const ASPath = struct {
 
         return Self{.segments = newASPath};
     }
+
+    // TODO: Implement eql() comparison function
 };
 
 pub const Aggregator = struct {
