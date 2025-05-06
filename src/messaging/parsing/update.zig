@@ -1,8 +1,9 @@
 const std = @import("std");
+const ip = @import("ip");
 const model = @import("../model.zig");
 
 const Route = model.Route;
-const Attribute = model.PathAttribute;
+const PathAttributes = model.PathAttributes;
 
 const UpdateParsingError = error{ RoutesLengthInconsistent, AttributesLengthInconsistent, InvalidPrefixLength };
 
@@ -58,10 +59,7 @@ fn readRoutes(self: Self, routesLength: u16) !std.ArrayList(Route) {
     return routesList;
 }
 
-fn readAttributes(self: Self, attributesLength: u16) !std.ArrayList(Attribute) {
-    const attributesList = std.ArrayList(Attribute).init(self.allocator);
-    errdefer attributesList.deinit();
-
+fn readAttributes(self: Self, attributesLength: u16) !PathAttributes {
     var bytesToRead: i32 = @intCast(attributesLength);
     while (bytesToRead > 0) {
         const attributeFlags = try self.reader.readInt(u8, .big);
@@ -83,7 +81,7 @@ fn readAttributes(self: Self, attributesLength: u16) !std.ArrayList(Attribute) {
         return UpdateParsingError.AttributesLengthInconsistent;
     }
 
-    return attributesList;
+    return PathAttributes{.origin = .EGP, .asPath = &[_]model.ASPathSegment{}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null};
 }
 
 pub fn readUpdateMessage(self: Self, messageLength: u16) !model.UpdateMessage {
@@ -93,13 +91,13 @@ pub fn readUpdateMessage(self: Self, messageLength: u16) !model.UpdateMessage {
 
     const attributesLength = try self.reader.readInt(u16, .big);
     const routeAttributes = try self.readAttributes(attributesLength);
-    defer routeAttributes.deinit();
+    defer routeAttributes.deinit(self.allocator);
 
     const advertisedLength = messageLength - withdrawnLength - attributesLength - 4;
     const advertisedRoutes = try self.readRoutes(advertisedLength);
     defer advertisedRoutes.deinit();
 
-    return .init(self.allocator, withdrawnRoutes.items, advertisedRoutes.items, routeAttributes.items);
+    return .init(self.allocator, withdrawnRoutes.items, advertisedRoutes.items, routeAttributes);
 }
 
 const testing = std.testing;
@@ -227,7 +225,6 @@ test "readUpdateMessage()" {
 
     try testing.expectEqual(stream.getPos(), messageBuffer.len);
 
-    try testing.expectEqual(0, message.pathAttributes.len);
     try testing.expectEqualSlices(Route, &[_]Route{Route{ .prefixLength = 12, .prefixData = [_]u8{ 192, 0b10110000, 0, 0 } }}, message.withdrawnRoutes);
     try testing.expectEqualSlices(Route, &[_]Route{
         Route{ .prefixLength = 32, .prefixData = [_]u8{ 192, 168, 0, 42 } },
