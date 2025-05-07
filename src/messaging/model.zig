@@ -53,14 +53,11 @@ pub const NotificationMessage = struct {
     errorKind: ErrorKind,
     data: ?[]u8,
 
-    allocator: ?Allocator,
-
     pub fn initNoData(errorCode: ErrorCode, errorKind: ErrorKind) Self {
         return .{
             .errorCode = errorCode,
             .errorKind = errorKind,
             .data = null,
-            .allocator = null,
         };
     }
 
@@ -71,15 +68,12 @@ pub const NotificationMessage = struct {
             .errorCode = errorCode,
             .errorKind = errorKind,
             .data = data,
-            .allocator = allocator,
         };
     }
 
-    pub fn deinit(self: Self) void {
-        if (self.data != null) {
-            std.debug.assert(self.allocator != null);
-            self.allocator.?.free(self.data.?);
-        }
+    pub fn deinit(self: Self, allocator: Allocator) void {
+        const data = self.data orelse return;
+        allocator.free(data);
     }
 };
 
@@ -222,7 +216,6 @@ pub const PathAttributes = struct {
 pub const UpdateMessage = struct {
     const Self = @This();
 
-    alloc: std.mem.Allocator,
     withdrawnRoutes: []const Route,
     advertisedRoutes: []const Route,
     pathAttributes: PathAttributes,
@@ -238,17 +231,16 @@ pub const UpdateMessage = struct {
         std.mem.copyForwards(Route, aR, advertisedRoutes);
 
         return Self{
-            .alloc = allocator,
             .withdrawnRoutes = wR,
             .advertisedRoutes = aR,
             .pathAttributes = try pathAttributes.clone(allocator),
         };
     }
 
-    pub fn deinit(self: *const Self) void {
-        self.alloc.free(self.withdrawnRoutes);
-        self.alloc.free(self.advertisedRoutes);
-        self.pathAttributes.deinit(self.alloc);
+    pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
+        allocator.free(self.withdrawnRoutes);
+        allocator.free(self.advertisedRoutes);
+        self.pathAttributes.deinit(allocator);
     }
 };
 

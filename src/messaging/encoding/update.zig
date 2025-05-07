@@ -133,7 +133,7 @@ test "writeUpdateBody()" {
         }, 
         PathAttributes{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null},
     );
-    defer msg.deinit();
+    defer msg.deinit(testing.allocator);
 
     // zig fmt: off
     const expectedBuffer = [_]u8{ 
