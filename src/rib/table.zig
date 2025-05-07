@@ -171,9 +171,21 @@ test "Set Route" {
 
     const route: Route = .default;
 
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 2) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 2), .localPref = 200, .atomicAggregate = true, .multiExitDiscriminator = 69420, .aggregator = null});
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null});
+    const asPathSegments = seg: {
+        const segments = try testing.allocator.alloc(model.ASPathSegment, 3);
+        for (segments, 0..) |*s, i| {
+            s.* = .{ .AS_Set = try testing.allocator.dupe(u16, &[_]u16{@intCast(i)}) };
+        }
+        break :seg segments;
+    };
+    const asPath: model.ASPath = .{
+        .segments = asPathSegments,
+    };
+    defer asPath.deinit(testing.allocator);
+
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 2) }, .{.origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 2), .localPref = 200, .atomicAggregate = true, .multiExitDiscriminator = 69420, .aggregator = null});
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null});
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
     try testing.expectEqual(ribEntry.route, Route.default);
@@ -184,7 +196,7 @@ test "Set Route" {
         const attrs: PathAttributes = routePath.attrs;
 
         try testing.expectEqual(model.Origin.EGP, attrs.origin);
-        try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath.segments);
+        try testing.expect(asPath.equal(attrs.asPath));
         try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 1), attrs.nexthop);
 
         try testing.expectEqual(142, attrs.localPref);
@@ -201,7 +213,7 @@ test "Set Route" {
         const attrs: PathAttributes = routePath.attrs;
 
         try testing.expectEqual(model.Origin.EGP, attrs.origin);
-        try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath.segments);
+        try testing.expect(asPath.equal(attrs.asPath));
         try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 2), attrs.nexthop);
 
         try testing.expectEqual(200, attrs.localPref);
