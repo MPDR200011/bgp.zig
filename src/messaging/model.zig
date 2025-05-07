@@ -100,8 +100,8 @@ pub const Origin = enum {
 pub const ASPathSegment = union(enum) {
     const Self = @This();
 
-    AS_Set: []u16,
-    AS_Sequence: []u16,
+    AS_Set: []const u16,
+    AS_Sequence: []const u16,
 
     pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
         switch (self) {
@@ -114,6 +114,27 @@ pub const ASPathSegment = union(enum) {
         switch (self) {
             .AS_Set => |e| return .{.AS_Set = try allocator.dupe(u16, e)},
             .AS_Sequence => |e| return .{.AS_Sequence = try allocator.dupe(u16, e)},
+        }
+    }
+
+    pub inline fn equal(self: Self, other: Self) bool {
+        switch (self) {
+            .AS_Sequence => |s1| {
+                switch (other) {
+                    .AS_Set => return false,
+                    .AS_Sequence => |s2| {
+                        return std.mem.eql(u16, s1, s2);
+                    }
+                }
+            },
+            .AS_Set => |s1| {
+                switch (other) {
+                    .AS_Sequence => return false,
+                    .AS_Set => |s2| {
+                        return std.mem.eql(u16, s1, s2);
+                    }
+                }
+            }
         }
     }
 };
@@ -141,7 +162,19 @@ pub const ASPath = struct {
         return Self{.segments = newASPath};
     }
 
-    // TODO: Implement eql() comparison function
+    pub inline fn equal(self: Self, other: Self) bool {
+        if (self.segments.len != other.segments.len) {
+            return false;
+        }
+
+        for (0..self.segments.len) |i| {
+            if (!self.segments[i].equal(other.segments[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 };
 
 pub const Aggregator = struct {
