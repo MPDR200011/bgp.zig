@@ -3,6 +3,8 @@ const zul = @import("zul");
 const ip = @import("ip");
 const timer = @import("../utils/timer.zig");
 
+const bgpParsing = @import("../messaging/parsing/message_reader.zig");
+
 const connections = @import("connections.zig");
 const encoder = @import("../messaging/encoding/encoder.zig");
 const messageModel = @import("../messaging/model.zig");
@@ -173,6 +175,7 @@ pub const Session = struct {
     peerConnection: ?std.net.Stream,
     peerConnectionThread: ?std.Thread,
 
+    messageReader: bgpParsing.MessageReader,
     messageEncoder: encoder.MessageEncoder,
 
     allocator: std.mem.Allocator,
@@ -195,6 +198,7 @@ pub const Session = struct {
             .connectionMutex = .{},
             .peerConnection = null,
             .peerConnectionThread = null,
+            .messageReader = .init(alloc),
             .messageEncoder = .init(alloc),
             .allocator = alloc,
             .eventQueue = try .init(alloc, .{ .count = 1, .backlog = 1 }),
@@ -205,6 +209,8 @@ pub const Session = struct {
     pub fn deinit(self: *Self) void {
         self.releaseResources();
         self.closeConnection();
+
+        self.messageReader.deinit();
 
         self.messageEncoder.deinit();
 
@@ -360,6 +366,24 @@ pub const Session = struct {
         }
 
         std.log.debug("Finished handling event: {s}", .{@tagName(event)});
+
+        switch (event) {
+            .OpenReceived => |msg| {self.messageReader.deInitMessage(.{ .OPEN = msg });},
+            .UpdateReceived => |msg| {self.messageReader.deInitMessage(.{ .UPDATE = msg });},
+            .NotificationReceived => |msg| {self.messageReader.deInitMessage(.{ .NOTIFICATION = msg });},
+            .OpenCollisionDump => |ctx| {self.messageReader.deInitMessage(.{ .OPEN = ctx.openMsg });},
+            else => {}
+        }
+    }
+
+    pub fn processUpdateMsg(self: Self, msg: messageModel.UpdateMessage) !void {
+        for (msg.withdrawnRoutes) |route| {
+            self.targetRib.removeRoute(route);
+        }
+
+        for (msg.advertisedRoutes) |route| {
+            try self.targetRib.setPath(route, .{ .V4 = self.parent.sessionAddresses.peerAddress }, msg.pathAttributes);
+        }
     }
 };
 

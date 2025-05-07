@@ -221,7 +221,7 @@ test "readUpdateMessage()" {
         .reader = stream.reader().any(),
     };
     const message = try updateReader.readUpdateMessage(messageBuffer.len);
-    defer message.deinit();
+    defer message.deinit(testing.allocator);
 
     try testing.expectEqual(stream.getPos(), messageBuffer.len);
 

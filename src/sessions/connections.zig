@@ -20,16 +20,13 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
     };
     const clientReader = connection.reader().any();
 
-    var messageReader = bgpParsing.MessageReader.init(clientReader, ctx.allocator);
-    defer messageReader.deinit();
-
     std.log.info("Connection handler thread started.", .{});
 
     // TODO: this guy will need to know if the connection teardown is graceful or not,
     // possibly a "graceful" flag in the session struct?
     connection: while (true) {
         std.log.debug("Reading next message:", .{});
-        const message: model.BgpMessage = messageReader.readMessage() catch |err| {
+        const message: model.BgpMessage = ctx.session.messageReader.readMessage(clientReader) catch |err| {
             std.log.err("Error reading next BGP message: {}", .{err});
 
             switch (err) {
@@ -50,16 +47,11 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
         };
         std.log.debug("Got message: {s}", .{@tagName(message)});
 
-        defer messageReader.deInitMessage(message);
-
         const event: session.Event = switch (message) {
             .OPEN => |openMessage| .{ .OpenReceived = openMessage },
             .KEEPALIVE => .{ .KeepAliveReceived = {} },
             .UPDATE => |msg| .{ .UpdateReceived = msg },
-            else => {
-                std.log.info("NOTIFICATION received", .{});
-                break :connection;
-            },
+            .NOTIFICATION => |msg| .{ .NotificationReceived = msg },
         };
 
         // ctx.session.parent.lock();

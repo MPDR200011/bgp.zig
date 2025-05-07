@@ -95,9 +95,9 @@ fn handleKeepAliveReceived(session: *Session) !PostHandlerAction {
 }
 
 fn handleUpdateReceived(session: *Session, msg: model.UpdateMessage) !PostHandlerAction {
-    _ = msg;
-
     try session.holdTimer.reschedule();
+
+    try session.processUpdateMsg(msg);
 
     return .keep;
 }

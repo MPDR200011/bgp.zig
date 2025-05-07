@@ -46,6 +46,7 @@ const RibEntry = struct {
 
     route: Route,
 
+    // TODO: best path
     paths: PathMap,
 
     pub fn init(allocator: std.mem.Allocator, route: Route) Self {

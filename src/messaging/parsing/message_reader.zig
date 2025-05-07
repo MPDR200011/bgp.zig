@@ -10,39 +10,40 @@ const updateReader = @import("update.zig");
 pub const MessageReader = struct {
     const Self = @This();
 
-    reader: std.io.AnyReader,
     allocator: std.mem.Allocator,
 
-    pub fn init(reader: std.io.AnyReader, alloc: std.mem.Allocator) Self {
+    pub fn init(alloc: std.mem.Allocator) Self {
         return .{
-            .reader = reader,
             .allocator = alloc,
         };
     }
 
     pub fn deinit(_: *Self) void {}
 
-    pub fn deInitMessage(_: *Self, m: model.BgpMessage) void {
+    pub fn deInitMessage(self: *Self, m: model.BgpMessage) void {
         switch (m) {
             .NOTIFICATION => |msg| {
-                msg.deinit();
+                msg.deinit(self.allocator);
+            },
+            .UPDATE => |msg| {
+                msg.deinit(self.allocator);
             },
             else => {}
         }
     }
 
-    pub fn readMessage(self: *Self) !model.BgpMessage {
-        const messageHeader = try headerReader.readHeader(self.reader);
+    pub fn readMessage(self: *Self, stream: std.io.AnyReader) !model.BgpMessage {
+        const messageHeader = try headerReader.readHeader(stream);
 
         const messageLength = messageHeader.messageLength - consts.HEADER_LENGTH;
 
         return switch (messageHeader.messageType) {
-            .OPEN => .{ .OPEN = try openReader.readOpenMessage(self.reader)},
+            .OPEN => .{ .OPEN = try openReader.readOpenMessage(stream)},
             .KEEPALIVE => .{ .KEEPALIVE = .{} },
-            .NOTIFICATION => .{ .NOTIFICATION = try notificationReader.readNotificationMessage(self.reader, messageLength, self.allocator) },
+            .NOTIFICATION => .{ .NOTIFICATION = try notificationReader.readNotificationMessage(stream, messageLength, self.allocator) },
             .UPDATE => .{ .UPDATE = try (updateReader.UpdateMsgParser{
                 .allocator = self.allocator,
-                .reader = self.reader
+                .reader = stream
             }).readUpdateMessage(messageLength)
         },
         };
