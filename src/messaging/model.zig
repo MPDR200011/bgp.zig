@@ -63,6 +63,7 @@ pub const NotificationMessage = struct {
 
     pub fn init(errorCode: ErrorCode, errorKind: ErrorKind, dataLength: usize, allocator: Allocator) !Self {
         const data = if (dataLength > 0) null else try allocator.alloc(u8, dataLength);
+        errdefer allocator.free(data);
 
         return .{
             .errorCode = errorCode,
@@ -148,6 +149,7 @@ pub const ASPath = struct {
 
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
         const newASPath = try allocator.alloc(ASPathSegment, self.segments.len);
+        errdefer allocator.free(newASPath);
 
         for (0..newASPath.len) |i| {
             newASPath[i] = try self.segments[i].clone(allocator);
