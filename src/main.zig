@@ -5,6 +5,7 @@ const posix = std.posix;
 const process = std.process;
 const clap = @import("clap");
 const ip = @import("ip");
+const zul = @import("zul");
 
 const Allocator = std.mem.Allocator;
 
@@ -78,16 +79,34 @@ pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]cons
     return newBuffer;
 }
 
-const DeviceConfig = struct {
+
+const LocalConfig = struct {
     asn: u16,
     routerId: u32,
+
+    localPort: ?u16,
+};
+
+const PeerDefinition = struct {
+    localAddress: []const u8,
+
+    peerAddress: []const u8,
+    peerPort: ?u16,
+
+    peeringMode: []const u8,
+    delayOpen_s: ?u32,
+};
+
+const Config = struct {
+    localConfig: LocalConfig,
+    peers: []const PeerDefinition,
 };
 
 const AcceptContext = struct {
     conn: net.Server.Connection,
     peerMap: *PeerMap,
     allocator: Allocator,
-    localConfig: DeviceConfig,
+    localConfig: LocalConfig,
 };
 
 const AcceptHandlerError = error{
@@ -180,20 +199,11 @@ pub fn main() !void {
 
     const params = comptime clap.parseParamsComptime(
         \\-h, --help     Display this help and exit.
-        \\--local_addr  <str>   Local address of the peering session, will also be used as router id
-        \\--local_port  <port>  Local port to listen on
-        \\--peer_addr   <str>   Address of peer to connect to
-        \\--peer_port  <port>   Port Peer is listening on
-        \\--peering_mode    <PEER_MODE> Peering Mode
-        \\--local_asn   <asn>   Local ASN
-        \\--router_id   <rID>   Router ID to use
-        \\--delay_open  <u16>   Delay open amount
+        \\-c, --config  <str>   Configuration path
     );
 
-    const parsers = comptime .{ .str = clap.parsers.string, .asn = clap.parsers.int(u16, 10), .rID = clap.parsers.int(u32, 10), .PEER_MODE = clap.parsers.enumeration(session.Mode), .port = clap.parsers.default.u16, .u16 = clap.parsers.default.u16 };
-
     var diag = clap.Diagnostic{};
-    var res = clap.parse(clap.Help, &params, parsers, .{
+    var res = clap.parse(clap.Help, &params, clap.parsers.default, .{
         .diagnostic = &diag,
         .allocator = gpa,
     }) catch |err| {
@@ -203,36 +213,16 @@ pub fn main() !void {
     };
     defer res.deinit();
 
-    if (res.args.help != 0) {
-        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
-    }
-
-    const localAddr = res.args.local_addr orelse "127.0.0.1";
-    const peerAddr = res.args.peer_addr orelse {
-        std.debug.print("Missing peer_addr\n", .{});
-        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
+    const configPath = res.args.config orelse {
+        std.log.err("Missing configuration filepath!!!", .{});
+        std.process.abort();
     };
 
-    const peeringMode = res.args.peering_mode orelse {
-        std.debug.print("Missing peering_mode\n", .{});
-        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
-    };
+    const managedProcessConfig = try zul.fs.readJson(Config, gpa, configPath, .{});
+    defer managedProcessConfig.deinit();
 
-    const localConfig: DeviceConfig = .{
-        .asn = res.args.local_asn orelse {
-            std.debug.print("Missing local_asn\n", .{});
-            return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
-        },
-        .routerId = res.args.router_id orelse {
-            std.debug.print("Missing router_id\n", .{});
-            return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
-        },
-    };
-
-    const delayOpenAmount: u16 = res.args.delay_open orelse 0;
-
-    const localPort = res.args.local_port orelse 179;
-    const peerPort = res.args.peer_port orelse 179;
+    const processConfig = managedProcessConfig.value;
+    const localPort = processConfig.localConfig.localPort orelse 179;
 
     var mainRib = rib.Rib.init(gpa);
 
@@ -247,28 +237,43 @@ pub fn main() !void {
     }
 
     {
-        const peer = try gpa.create(Peer);
-        peer.* = session.Peer.init(.{
-            .localAsn = localConfig.asn,
-            .holdTime = 300,
-            .localRouterId = localConfig.routerId,
-            .peeringMode = peeringMode,
-            .delayOpen = delayOpenAmount > 0,
-            .delayOpen_ms = delayOpenAmount * std.time.ms_per_s,
-            .sessionAddresses = .{
-                .localAddress = try .parse(localAddr),
-                .peerAddress = try .parse(peerAddr),
-            },
-            .sessionPorts = .{
-                .localPort = localPort,
-                .peerPort = peerPort,
-            },
-        }, peer, gpa, &mainRib) catch |err| {
-            std.log.err("Failed to initialize peer memory: {}", .{err});
-            return err;
-        };
+        for (processConfig.peers) |peerConfig| {
+            const peeringMode: session.Mode = modeBlock: {
+                if (std.mem.eql(u8, peerConfig.peeringMode, "PASSIVE")) {
+                    break :modeBlock .PASSIVE;
+                } else if (std.mem.eql(u8, peerConfig.peeringMode, "ACTIVE")) {
+                    break :modeBlock .ACTIVE;
+                } else  {
+                    std.log.err("Invalid Peering Mode: {s}", .{peerConfig.peeringMode});
+                    std.process.abort();
+                }
+            };
 
-        try peerMap.put(peer.sessionAddresses, peer);
+            const delayOpenAmount = peerConfig.delayOpen_s orelse 0;
+
+            const peer = try gpa.create(Peer);
+            peer.* = session.Peer.init(.{
+                .localAsn = processConfig.localConfig.asn,
+                .holdTime = 300,
+                .localRouterId = processConfig.localConfig.routerId,
+                .peeringMode = peeringMode,
+                .delayOpen = delayOpenAmount > 0,
+                .delayOpen_ms = delayOpenAmount * std.time.ms_per_s,
+                .sessionAddresses = .{
+                    .localAddress = try .parse(peerConfig.localAddress),
+                    .peerAddress = try .parse(peerConfig.peerAddress),
+                },
+                .sessionPorts = .{
+                    .localPort = localPort,
+                    .peerPort = peerConfig.peerPort orelse 179,
+                },
+                }, peer, gpa, &mainRib) catch |err| {
+                std.log.err("Failed to initialize peer memory: {}", .{err});
+                return err;
+            };
+
+            try peerMap.put(peer.sessionAddresses, peer);
+        }
     }
 
     var it = peerMap.valueIterator();
@@ -289,7 +294,7 @@ pub fn main() !void {
 
         std.log.info("Connection received from {s}", .{peerAddrStr});
 
-        const acceptContext: AcceptContext = .{ .conn = client, .peerMap = &peerMap, .allocator = gpa, .localConfig = localConfig };
+        const acceptContext: AcceptContext = .{ .conn = client, .peerMap = &peerMap, .allocator = gpa, .localConfig = processConfig.localConfig };
         var acceptThread = try std.Thread.spawn(.{}, acceptHandler, .{acceptContext});
         acceptThread.join();
     }

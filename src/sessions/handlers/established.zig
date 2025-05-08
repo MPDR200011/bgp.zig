@@ -60,7 +60,6 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
     // TODO delete all routes
 
     session.releaseResources();
-    std.debug.print("TCP FAILED", .{});
     session.closeConnection();
     session.connectionRetryCount += 1;
 
@@ -76,7 +75,6 @@ fn handleConnectionCollision(session: *Session) !PostHandlerAction {
     // TODO delete all routes
 
     session.releaseResources();
-    std.debug.print("TCP FAILED", .{});
     session.closeConnection();
 
     session.connectionRetryCount += 1;

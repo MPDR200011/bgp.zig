@@ -1,0 +1,16 @@
+{
+    "localConfig": {
+        "asn": 64513,
+        "routerId": 2,
+        "localPort": 9002
+    },
+    "peers": [
+        {
+            "localAddress": "127.0.0.1",
+            "peerAddress": "127.0.0.1",
+            "peerPort": 9001,
+            "peeringMode": "ACTIVE",
+            "delayOpen_s": 0
+        }
+    ]
+}
