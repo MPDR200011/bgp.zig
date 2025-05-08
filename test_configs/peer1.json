@@ -12,5 +12,11 @@
             "peeringMode": "PASSIVE",
             "delayOpen_s": 5
         }
+    ],
+    "networks": [
+        {
+            "afi": 4,
+            "address": "10.0.42.0/24"
+        }
     ]
 }

@@ -9,6 +9,8 @@ const zul = @import("zul");
 
 const Allocator = std.mem.Allocator;
 
+const config = @import("config/json.zig");
+
 const session = @import("sessions/session.zig");
 const connections = @import("sessions/connections.zig");
 
@@ -79,34 +81,11 @@ pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]cons
     return newBuffer;
 }
 
-
-const LocalConfig = struct {
-    asn: u16,
-    routerId: u32,
-
-    localPort: ?u16,
-};
-
-const PeerDefinition = struct {
-    localAddress: []const u8,
-
-    peerAddress: []const u8,
-    peerPort: ?u16,
-
-    peeringMode: []const u8,
-    delayOpen_s: ?u32,
-};
-
-const Config = struct {
-    localConfig: LocalConfig,
-    peers: []const PeerDefinition,
-};
-
 const AcceptContext = struct {
     conn: net.Server.Connection,
     peerMap: *PeerMap,
     allocator: Allocator,
-    localConfig: LocalConfig,
+    localConfig: config.LocalConfig,
 };
 
 const AcceptHandlerError = error{
@@ -218,7 +197,7 @@ pub fn main() !void {
         std.process.abort();
     };
 
-    const managedProcessConfig = try zul.fs.readJson(Config, gpa, configPath, .{});
+    const managedProcessConfig = try config.loadConfig(gpa, configPath);
     defer managedProcessConfig.deinit();
 
     const processConfig = managedProcessConfig.value;
