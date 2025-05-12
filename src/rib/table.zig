@@ -124,6 +124,10 @@ pub const Rib = struct {
                 .attrs = try attrs.clone(self.allocator),
             };
         }
+
+        // FIXME:
+        // - Best path selection
+        // - Announce new best path
     }
 
     pub fn removeRoute(self: *Self, route: Route) void {
@@ -134,6 +138,8 @@ pub const Rib = struct {
         ribEntry.deinit(self.allocator);
 
         _ = self.prefixes.remove(route);
+
+        // FIXME: Announce withdrawn routes
     }
 };
 
