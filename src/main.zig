@@ -69,7 +69,7 @@ pub const PeerMapCtx = struct {
 pub const PeerMap = std.HashMap(v4PeerSessionAddresses, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
 
 pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]const u8 {
-    var addressBuffer: [32]u8 = undefined;
+    var addressBuffer: [64]u8 = undefined;
     var addressStream = std.io.fixedBufferStream(&addressBuffer);
     const addressWriter = addressStream.writer();
     try address.format("", .{}, addressWriter);
