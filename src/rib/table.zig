@@ -3,6 +3,8 @@ const ip = @import("ip");
 
 const model = @import("../messaging/model.zig");
 
+const Allocator = std.mem.Allocator;
+
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
@@ -13,7 +15,7 @@ const RoutePath = struct {
 
     attrs: PathAttributes,
 
-    fn deinit(self: Self, allocator: std.mem.Allocator) void {
+    fn deinit(self: Self, allocator: Allocator) void {
         self.attrs.deinit(allocator);
     }
 };
@@ -44,25 +46,47 @@ const PathMap = std.HashMap(ip.IpAddress, RoutePath, PathMapCtx, std.hash_map.de
 const RibEntry = struct {
     const Self = @This();
 
+    allocator: Allocator,
     route: Route,
 
     // TODO: best path
     paths: PathMap,
 
-    pub fn init(allocator: std.mem.Allocator, route: Route) Self {
+    pub fn init(allocator: Allocator, route: Route) Self {
         return Self{
+            .allocator = allocator,
             .route = route,
             .paths = .init(allocator),
         };
     }
 
-    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, allocator: Allocator) void {
         var pathsIterator = self.paths.valueIterator();
         while (pathsIterator.next()) |path| {
             path.deinit(allocator);
         }
         self.paths.deinit();
     } 
+
+    pub fn addPath(self: *Self, advertiser: ip.IpAddress, attrs: PathAttributes) !void {
+        const res = try self.paths.getOrPut(advertiser);
+        if (res.found_existing) {
+            res.value_ptr.attrs.deinit(self.allocator);
+            res.value_ptr.attrs = try attrs.clone(self.allocator);
+        } else {
+            res.value_ptr.* = RoutePath{
+                .advertiser = advertiser,
+                .attrs = try attrs.clone(self.allocator),
+            };
+        }
+    }
+
+    pub fn removePath(self: *Self, advertiser: ip.IpAddress) void {
+        const path = self.paths.getPtr(advertiser) orelse return;
+
+        path.deinit(self.allocator);
+        _ = self.paths.remove(advertiser);
+    }
 };
 
 pub const RouteMapCtx = struct {
@@ -86,9 +110,9 @@ pub const Rib = struct {
     mutex: std.Thread.Mutex,
     prefixes: PrefixMap,
 
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
 
-    pub fn init(alloc: std.mem.Allocator) Self {
+    pub fn init(alloc: Allocator) Self {
         return Self{
             .mutex = .{},
             .prefixes = .init(alloc),
@@ -114,32 +138,28 @@ pub const Rib = struct {
         }
         const ribEntry = routeRes.value_ptr;
 
-        const res = try ribEntry.paths.getOrPut(advertiser);
-        if (res.found_existing) {
-            res.value_ptr.attrs.deinit(self.allocator);
-            res.value_ptr.attrs = try attrs.clone(self.allocator);
-        } else {
-            res.value_ptr.* = RoutePath{
-                .advertiser = advertiser,
-                .attrs = try attrs.clone(self.allocator),
-            };
-        }
+        try ribEntry.addPath(advertiser, attrs);
 
         // FIXME:
         // - Best path selection
         // - Announce new best path
     }
 
-    pub fn removeRoute(self: *Self, route: Route) void {
+    pub fn removePath(self: *Self, route: Route, advertiser: ip.IpAddress) bool {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        const ribEntry = self.prefixes.getPtr(route) orelse return;
-        ribEntry.deinit(self.allocator);
+        const ribEntry = self.prefixes.getPtr(route) orelse return false;
+        ribEntry.removePath(advertiser);
 
-        _ = self.prefixes.remove(route);
+        if (ribEntry.paths.count() == 0) {
+            ribEntry.deinit(self.allocator);
+            _ = self.prefixes.remove(route);
 
-        // FIXME: Announce withdrawn routes
+            return true;
+        } else {
+            return false;
+        }
     }
 };
 
@@ -231,34 +251,26 @@ test "Set Route" {
     }
 }
 
-test "Remove Route" {
+test "Remove Path" {
     var rib: Rib = .init(testing.allocator);
     defer rib.deinit();
 
     const route: Route = .default;
 
     try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 2) }, .{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
 
-    const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
-    try testing.expectEqual(ribEntry.route, Route.default);
-    {
-        const routePath = ribEntry.paths.getPtr(.{ .V4 = .init(127, 0, 0, 1) }) orelse return error.PathNotFound;
-        try testing.expectEqual(routePath.advertiser, ip.IpAddress{ .V4 = .init(127, 0, 0, 1) });
+    try testing.expectEqual(false, rib.removePath(route, .{ .V4 = .init(127, 0, 0, 1) }));
 
-        const attrs: PathAttributes = routePath.attrs;
+    const ribEntry = rib.prefixes.getPtr(route) orelse return error.ExpectedNonNull;
 
-        try testing.expectEqual(model.Origin.EGP, attrs.origin);
-        try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath.segments);
-        try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 1), attrs.nexthop);
+    try testing.expectEqual(1, ribEntry.paths.count());
 
-        try testing.expectEqual(142, attrs.localPref);
+    const path = ribEntry.paths.getPtr(.{ .V4 = .init(127, 0, 0, 2) }) orelse return error.ExpectedNonNull;
+    
+    try testing.expect(path.advertiser.?.equals(.{ .V4 = .init(127, 0, 0, 2) }));
 
-        try testing.expectEqual(true, attrs.atomicAggregate);
-        try testing.expectEqual(null, attrs.multiExitDiscriminator);
-        try testing.expectEqual(null, attrs.aggregator);
-    }
+    try testing.expectEqual(true, rib.removePath(route, .{ .V4 = .init(127, 0, 0, 2) }));
 
-    rib.removeRoute(route);
     try testing.expectEqual(null, rib.prefixes.getPtr(route));
 }
