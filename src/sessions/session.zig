@@ -15,7 +15,9 @@ const openSentHandler = @import("handlers/open_sent.zig");
 const openConfirmHandler = @import("handlers/open_confirm.zig");
 const establishedHandler = @import("handlers/established.zig");
 
-const rib = @import("../rib/table.zig");
+const ribManager = @import("../rib/manager.zig");
+
+const RibManager = ribManager.RibManager;
 
 const Timer = timer.Timer;
 
@@ -182,9 +184,9 @@ pub const Session = struct {
 
     eventQueue: *zul.ThreadPool(Self.handleEvent),
 
-    targetRib: *rib.Rib,
+    targetRib: *RibManager,
 
-    pub fn init(parent: *Peer, alloc: std.mem.Allocator, targetRib: *rib.Rib) !Self {
+    pub fn init(parent: *Peer, alloc: std.mem.Allocator, targetRib: *RibManager) !Self {
         return .{
             .state = .IDLE,
             .parent = parent,
@@ -432,7 +434,7 @@ pub const Peer = struct {
 
     mutex: std.Thread.Mutex,
 
-    pub fn init(cfg: PeerConfig, self: *Self, alloc: std.mem.Allocator, targetRib: *rib.Rib) !Self {
+    pub fn init(cfg: PeerConfig, self: *Self, alloc: std.mem.Allocator, targetRib: *RibManager) !Self {
         return .{
             .localAsn = cfg.localAsn,
             .holdTime = cfg.holdTime,
