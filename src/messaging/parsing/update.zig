@@ -81,7 +81,7 @@ fn readAttributes(self: Self, attributesLength: u16) !PathAttributes {
         return UpdateParsingError.AttributesLengthInconsistent;
     }
 
-    return PathAttributes{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null};
+    return PathAttributes{.allocator = self.allocator, .origin = .EGP, .asPath = .{.allocator = self.allocator, .segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null};
 }
 
 pub fn readUpdateMessage(self: Self, messageLength: u16) !model.UpdateMessage {
@@ -91,7 +91,7 @@ pub fn readUpdateMessage(self: Self, messageLength: u16) !model.UpdateMessage {
 
     const attributesLength = try self.reader.readInt(u16, .big);
     const routeAttributes = try self.readAttributes(attributesLength);
-    defer routeAttributes.deinit(self.allocator);
+    defer routeAttributes.deinit();
 
     const advertisedLength = messageLength - withdrawnLength - attributesLength - 4;
     const advertisedRoutes = try self.readRoutes(advertisedLength);
@@ -221,7 +221,7 @@ test "readUpdateMessage()" {
         .reader = stream.reader().any(),
     };
     const message = try updateReader.readUpdateMessage(messageBuffer.len);
-    defer message.deinit(testing.allocator);
+    defer message.deinit();
 
     try testing.expectEqual(stream.getPos(), messageBuffer.len);
 

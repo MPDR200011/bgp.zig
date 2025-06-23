@@ -20,13 +20,13 @@ pub const MessageReader = struct {
 
     pub fn deinit(_: *Self) void {}
 
-    pub fn deInitMessage(self: *Self, m: model.BgpMessage) void {
+    pub fn deInitMessage(_: *Self, m: model.BgpMessage) void {
         switch (m) {
             .NOTIFICATION => |msg| {
-                msg.deinit(self.allocator);
+                msg.deinit();
             },
             .UPDATE => |msg| {
-                msg.deinit(self.allocator);
+                msg.deinit();
             },
             else => {}
         }

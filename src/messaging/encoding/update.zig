@@ -4,6 +4,7 @@ const consts = @import("../consts.zig");
 const model = @import("../model.zig");
 
 const PathAttributes = model.PathAttributes;
+const AsPath = model.ASPath;
 
 fn calculateRoutesLength(routes: []const model.Route) usize {
     var total: usize = 0;
@@ -109,6 +110,11 @@ test "writeRoutes()" {
 }
 
 test "writeUpdateBody()" {
+    const asPath: AsPath = .{
+        .allocator = testing.allocator,
+        .segments = try testing.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{})
+    };
+
     const msg = try model.UpdateMessage.init(
         testing.allocator, 
         &[_]model.Route{ 
@@ -131,9 +137,9 @@ test "writeUpdateBody()" {
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
         }, 
-        PathAttributes{.origin = .EGP, .asPath = .{.segments = &[_]model.ASPathSegment{}}, .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null},
+        PathAttributes{.allocator = testing.allocator, .origin = .EGP, .asPath = asPath , .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null},
     );
-    defer msg.deinit(testing.allocator);
+    defer msg.deinit();
 
     // zig fmt: off
     const expectedBuffer = [_]u8{ 

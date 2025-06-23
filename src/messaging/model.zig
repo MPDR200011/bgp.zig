@@ -49,12 +49,15 @@ pub const ErrorKind = enum(u8) {
 pub const NotificationMessage = struct {
     const Self = @This();
 
+    allocator: ?Allocator,
+
     errorCode: ErrorCode,
     errorKind: ErrorKind,
     data: ?[]u8,
 
     pub fn initNoData(errorCode: ErrorCode, errorKind: ErrorKind) Self {
         return .{
+            .allocator = null,
             .errorCode = errorCode,
             .errorKind = errorKind,
             .data = null,
@@ -66,15 +69,18 @@ pub const NotificationMessage = struct {
         errdefer allocator.free(data);
 
         return .{
+            .allocator = allocator,
             .errorCode = errorCode,
             .errorKind = errorKind,
             .data = data,
         };
     }
 
-    pub fn deinit(self: Self, allocator: Allocator) void {
+    pub fn deinit(self: Self) void {
         const data = self.data orelse return;
-        allocator.free(data);
+
+        std.debug.assert(self.allocator != null);
+        self.allocator.?.free(data);
     }
 };
 
@@ -92,45 +98,36 @@ pub const Origin = enum {
     IGP,EGP,INCOMPLETE,
 };
 
-pub const ASPathSegment = union(enum) {
+pub const ASPathSegmentType = enum{
+    AS_Set,
+    AS_Sequence
+};
+pub const ASPathSegment = struct {
     const Self = @This();
 
-    AS_Set: []const u16,
-    AS_Sequence: []const u16,
+    allocator: Allocator,
 
-    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
-        switch (self) {
-            .AS_Set => |e| return allocator.free(e),
-            .AS_Sequence => |e| return allocator.free(e),
-        }
+    segType: ASPathSegmentType,
+    contents: []const u16,
+
+    pub fn deinit(self: Self) void {
+        self.allocator.free(self.contents);
     }
 
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
-        switch (self) {
-            .AS_Set => |e| return .{.AS_Set = try allocator.dupe(u16, e)},
-            .AS_Sequence => |e| return .{.AS_Sequence = try allocator.dupe(u16, e)},
-        }
+        return Self{
+            .allocator = allocator,
+            .segType = self.segType,
+            .contents = try allocator.dupe(u16, self.contents),
+        };
     }
 
     pub inline fn equal(self: Self, other: Self) bool {
-        switch (self) {
-            .AS_Sequence => |s1| {
-                switch (other) {
-                    .AS_Set => return false,
-                    .AS_Sequence => |s2| {
-                        return std.mem.eql(u16, s1, s2);
-                    }
-                }
-            },
-            .AS_Set => |s1| {
-                switch (other) {
-                    .AS_Sequence => return false,
-                    .AS_Set => |s2| {
-                        return std.mem.eql(u16, s1, s2);
-                    }
-                }
-            }
+        if (self.segType != other.segType) {
+            return false;
         }
+
+        return std.mem.eql(u16, self.contents, other.contents);
     }
 };
 
@@ -138,13 +135,14 @@ pub const ASPath = struct {
     // FIXME: Cloning logic should really be tested to ensure stuff lands on separate buffers
     const Self = @This();
 
+    allocator: Allocator,
     segments: []const ASPathSegment,
 
-    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: Self) void {
         for (self.segments) |seg| {
-            seg.deinit(allocator);
+            seg.deinit();
         }
-        allocator.free(self.segments);
+        self.allocator.free(self.segments);
     }
 
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
@@ -155,7 +153,7 @@ pub const ASPath = struct {
             newASPath[i] = try self.segments[i].clone(allocator);
         }
 
-        return Self{.segments = newASPath};
+        return Self{.allocator = allocator, .segments = newASPath};
     }
 
     pub inline fn equal(self: Self, other: Self) bool {
@@ -171,6 +169,16 @@ pub const ASPath = struct {
 
         return true;
     }
+
+    pub fn createEmpty(allocator: Allocator) Self {
+        return Self{
+            .allocator = allocator,
+            .segments = allocator.dupe(ASPathSegment, &[_]ASPathSegment{}) catch {
+                std.debug.print("ERROR ALLOCATING EMPTY SLICE, WTF!!!!!", .{});
+                std.process.abort();
+            },
+        };
+    }
 };
 
 pub const Aggregator = struct {
@@ -180,6 +188,9 @@ pub const Aggregator = struct {
 
 pub const PathAttributes = struct {
     const Self = @This();
+
+    allocator: Allocator,
+
     // Well known, Mandatory
     origin: Origin,
     asPath: ASPath,
@@ -198,12 +209,13 @@ pub const PathAttributes = struct {
     // Optional, transitive
     aggregator: ?Aggregator,
 
-    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
-        self.asPath.deinit(allocator);
+    pub fn deinit(self: Self) void {
+        self.asPath.deinit();
     }
 
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
         return Self{
+            .allocator = allocator,
             .origin = self.origin,
             .asPath = try self.asPath.clone(allocator),
             .nexthop = self.nexthop,
@@ -218,11 +230,13 @@ pub const PathAttributes = struct {
 pub const UpdateMessage = struct {
     const Self = @This();
 
+    allocator: Allocator,
+
     withdrawnRoutes: []const Route,
     advertisedRoutes: []const Route,
     pathAttributes: PathAttributes,
 
-    pub fn init(allocator: std.mem.Allocator, withdrawnRoutes: []const Route, advertisedRoutes: []const Route, pathAttributes: PathAttributes) !Self {
+    pub fn init(allocator: Allocator, withdrawnRoutes: []const Route, advertisedRoutes: []const Route, pathAttributes: PathAttributes) !Self {
 
         const wR = try allocator.alloc(Route, withdrawnRoutes.len);
         errdefer allocator.free(wR);
@@ -233,16 +247,17 @@ pub const UpdateMessage = struct {
         std.mem.copyForwards(Route, aR, advertisedRoutes);
 
         return Self{
+            .allocator = allocator,
             .withdrawnRoutes = wR,
             .advertisedRoutes = aR,
-            .pathAttributes = try pathAttributes.clone(allocator),
+            .pathAttributes = try pathAttributes.clone(pathAttributes.allocator),
         };
     }
 
-    pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
-        allocator.free(self.withdrawnRoutes);
-        allocator.free(self.advertisedRoutes);
-        self.pathAttributes.deinit(allocator);
+    pub fn deinit(self: *const Self) void {
+        self.allocator.free(self.withdrawnRoutes);
+        self.allocator.free(self.advertisedRoutes);
+        self.pathAttributes.deinit();
     }
 };
 

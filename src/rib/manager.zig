@@ -12,15 +12,6 @@ const Rib = rib.Rib;
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
-const Operation = union(enum) {
-    add: std.meta.Tuple(&[_]type{*Rib, Route, ip.IpAddress, PathAttributes}),
-    remove: std.meta.Tuple(&[_]type{*Rib, Route, ip.IpAddress})
-};
-
-const TaskArgs = std.meta.Tuple(&[_]type{*RibManager, Operation});
-
-const RibUpdateTask = debounced.AccumulatingDebouncedTask(TaskArgs);
-
 pub const RibManager = struct {
     const Self = @This();
 
@@ -48,7 +39,7 @@ pub const RibManager = struct {
         self.ribMutex.lock();
         defer self.ribMutex.unlock();
 
-        try self.rib.setPath(route, advertiser, try attrs.clone(self.allocator));
+        try self.rib.setPath(route, advertiser, try attrs.clone(attrs.allocator));
     }
 
     pub fn removePath(self: *Self, route: Route, advertiser: ip.IpAddress) !void {
