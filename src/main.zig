@@ -22,7 +22,7 @@ const bgpEncoding = @import("messaging/encoding/encoder.zig");
 const v4PeerSessionAddresses = session.v4PeerSessionAddresses;
 const Peer = session.Peer;
 
-const rib = @import("rib/table.zig");
+const ribManager = @import("rib/manager.zig");
 
 pub const std_options: std.Options = .{
     // Set the log level to info
@@ -203,7 +203,7 @@ pub fn main() !void {
     const processConfig = managedProcessConfig.value;
     const localPort = processConfig.localConfig.localPort orelse 179;
 
-    var mainRib = rib.Rib.init(gpa);
+    var mainRib = try ribManager.RibManager.init(gpa);
 
     var peerMap = PeerMap.init(gpa);
     defer {

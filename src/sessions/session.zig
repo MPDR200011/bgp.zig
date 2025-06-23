@@ -379,12 +379,14 @@ pub const Session = struct {
     }
 
     pub fn processUpdateMsg(self: Self, msg: messageModel.UpdateMessage) !void {
+        const advertiser = ip.IpAddress{ .V4 = self.parent.sessionAddresses.peerAddress };
+
         for (msg.withdrawnRoutes) |route| {
-            self.targetRib.removeRoute(route);
+            try self.targetRib.removePath(route, advertiser);
         }
 
         for (msg.advertisedRoutes) |route| {
-            try self.targetRib.setPath(route, .{ .V4 = self.parent.sessionAddresses.peerAddress }, msg.pathAttributes);
+            try self.targetRib.setPath(route, advertiser, msg.pathAttributes);
         }
     }
 };

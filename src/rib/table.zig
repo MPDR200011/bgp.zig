@@ -139,10 +139,6 @@ pub const Rib = struct {
         const ribEntry = routeRes.value_ptr;
 
         try ribEntry.addPath(advertiser, attrs);
-
-        // FIXME:
-        // - Best path selection
-        // - Announce new best path
     }
 
     pub fn removePath(self: *Self, route: Route, advertiser: ip.IpAddress) bool {
