@@ -25,61 +25,36 @@ pub const RibManager = struct {
     const Self = @This();
 
     allocator: Allocator,
-    rib: *Rib,
-    updateTask: *RibUpdateTask,
+
+    ribMutex: std.Thread.Mutex,
+    rib: Rib,
 
     // subcribers (sessions that need to announce updates)
     // worker (processing updates should be async)
 
     pub fn init(alloc: Allocator) !Self {
-        const targetRib = try alloc.create(Rib);
-        errdefer alloc.destroy(targetRib);
-
-        targetRib.* = .init(alloc);
         return Self{
             .allocator = alloc,
-            .rib = targetRib,
-            .updateTask = try .init(alloc, Self.update, .{.debounceDelay_ms = 2 * std.time.ms_per_s}),
+            .ribMutex = .{},
+            .rib = .init(alloc),
         };
     }
 
     pub fn deinit(self: Self) Self {
         self.rib.deinit();
-        self.allocator.destroy(self.rib);
-
-        self.updateTask.deinit(self.allocator);
-    }
-
-    pub fn update(argsList: []TaskArgs) void {
-        for (argsList) |args| {
-            const self, const op = args;
-
-            switch (op) {
-                .add => |addOp| {
-                    @call(.auto, Rib.setPath, addOp) catch |err| {
-                        // FIXME
-                        std.debug.print("RibManager: ERROR RUNNING setPath {}\n", .{err});
-                        std.process.abort();
-                    };
-                    _, _, _, const attrs = addOp;
-                    attrs.deinit(self.allocator);
-                },
-                .remove => |removeOp| {
-                    _ = @call(.auto, Rib.removePath, removeOp);
-                }
-            }
-        }
-
-        // Best Path Selection
-        
-        // Subscriber Notification
     }
 
     pub fn setPath(self: *Self, route: Route, advertiser: ip.IpAddress, attrs: PathAttributes) !void {
-        try self.updateTask.call(.{self, .{.add = .{self.rib, route, advertiser, try attrs.clone(self.allocator)}}});
+        self.ribMutex.lock();
+        defer self.ribMutex.unlock();
+
+        try self.rib.setPath(route, advertiser, try attrs.clone(self.allocator));
     }
 
     pub fn removePath(self: *Self, route: Route, advertiser: ip.IpAddress) !void {
-        try self.updateTask.call(.{self, .{.remove = .{self.rib, route, advertiser}}});
+        self.ribMutex.lock();
+        defer self.ribMutex.unlock();
+
+        _ = self.rib.removePath(route, advertiser);
     }
 };

@@ -107,14 +107,12 @@ const PrefixMap = std.HashMap(Route, RibEntry, RouteMapCtx, std.hash_map.default
 pub const Rib = struct {
     const Self = @This();
 
-    mutex: std.Thread.Mutex,
     prefixes: PrefixMap,
 
     allocator: Allocator,
 
     pub fn init(alloc: Allocator) Self {
         return Self{
-            .mutex = .{},
             .prefixes = .init(alloc),
             .allocator = alloc,
         };
@@ -129,9 +127,6 @@ pub const Rib = struct {
     }
 
     pub fn setPath(self: *Self, route: Route, advertiser: ip.IpAddress, attrs: PathAttributes) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
         const routeRes = try self.prefixes.getOrPut(route);
         if (!routeRes.found_existing) {
             routeRes.value_ptr.* = .init(self.allocator, route);
@@ -142,9 +137,6 @@ pub const Rib = struct {
     }
 
     pub fn removePath(self: *Self, route: Route, advertiser: ip.IpAddress) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
         const ribEntry = self.prefixes.getPtr(route) orelse return false;
         ribEntry.removePath(advertiser);
 
