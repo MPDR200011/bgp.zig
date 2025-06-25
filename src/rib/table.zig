@@ -3,24 +3,17 @@ const ip = @import("ip");
 
 const model = @import("../messaging/model.zig");
 
+const common = @import("./common.zig");
+
 const Allocator = std.mem.Allocator;
 
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
-const RoutePath = struct {
-    const Self = @This();
+const RoutePath = common.RoutePath;
+const RouteMapCtx = common.RouteHashFns;
 
-    advertiser: ?ip.IpAddress,
-
-    attrs: PathAttributes,
-
-    fn deinit(self: Self) void {
-        self.attrs.deinit();
-    }
-};
-
-pub const PathMapCtx = struct {
+pub const PathMapCtx  = struct {
     const Self = @This();
 
     pub fn hash(_: Self, r: ip.IpAddress) u64 {
@@ -86,19 +79,6 @@ const RibEntry = struct {
 
         path.deinit();
         _ = self.paths.remove(advertiser);
-    }
-};
-
-pub const RouteMapCtx = struct {
-    const Self = @This();
-
-    pub fn hash(_: Self, r: Route) u64 {
-        const hashFn = std.hash_map.getAutoHashFn(Route, void);
-        return hashFn({}, r);
-    }
-
-    pub fn eql(_: Self, r1: Route, r2: Route) bool {
-        return (r1.prefixLength == r2.prefixLength) and (std.mem.eql(u8, &r1.prefixData, &r2.prefixData));
     }
 };
 
