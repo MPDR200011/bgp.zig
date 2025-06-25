@@ -283,4 +283,5 @@ test {
  _ =   @import("messaging/parsing/update.zig");
  _ =   @import("messaging/encoding/update.zig");
  _ =   @import("rib/table.zig");
+ _ =   @import("rib/adjRib.zig");
 }
