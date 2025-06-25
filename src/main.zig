@@ -22,7 +22,7 @@ const bgpEncoding = @import("messaging/encoding/encoder.zig");
 const v4PeerSessionAddresses = session.v4PeerSessionAddresses;
 const Peer = session.Peer;
 
-const ribManager = @import("rib/manager.zig");
+const ribManager = @import("rib/mainRibManager.zig");
 
 pub const std_options: std.Options = .{
     // Set the log level to info
@@ -282,6 +282,6 @@ pub fn main() !void {
 test {
  _ =   @import("messaging/parsing/update.zig");
  _ =   @import("messaging/encoding/update.zig");
- _ =   @import("rib/table.zig");
+ _ =   @import("rib/mainRib.zig");
  _ =   @import("rib/adjRib.zig");
 }

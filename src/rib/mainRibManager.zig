@@ -1,7 +1,7 @@
 const std = @import("std");
 const ip = @import("ip");
 
-const rib = @import("table.zig");
+const rib = @import("mainRib.zig");
 const debounced = @import("../utils/debounced.zig");
 const model = @import("../messaging/model.zig");
 

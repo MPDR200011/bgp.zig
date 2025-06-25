@@ -15,7 +15,7 @@ const openSentHandler = @import("handlers/open_sent.zig");
 const openConfirmHandler = @import("handlers/open_confirm.zig");
 const establishedHandler = @import("handlers/established.zig");
 
-const ribManager = @import("../rib/manager.zig");
+const ribManager = @import("../rib/mainRibManager.zig");
 
 const RibManager = ribManager.RibManager;
 
