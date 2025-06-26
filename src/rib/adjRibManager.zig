@@ -12,6 +12,13 @@ const AdjRib = adjRib.AdjRib;
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
+const SubscriberRef = struct {};
+const UpdateCtx = struct {
+    ref: *SubscriberRef,
+    // adds, removes, attrs
+};
+const UpdateSubCallback = fn(*UpdateCtx) void {};
+
 pub const AdjRibManager = struct {
     const Self = @This();
 
