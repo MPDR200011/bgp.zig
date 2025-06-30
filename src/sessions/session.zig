@@ -16,8 +16,15 @@ const openConfirmHandler = @import("handlers/open_confirm.zig");
 const establishedHandler = @import("handlers/established.zig");
 
 const ribManager = @import("../rib/mainRibManager.zig");
+const adjRibManager = @import("../rib/adjRibManager.zig");
+
+const Allocator = std.mem.Allocator;
 
 const RibManager = ribManager.RibManager;
+
+const AdjRibManager = adjRibManager.AdjRibManager;
+const AdjRibSubscription = adjRibManager.Subscription;
+const AdjRibUpdate = adjRibManager.Update;
 
 const Timer = timer.Timer;
 
@@ -186,7 +193,10 @@ pub const Session = struct {
 
     targetRib: *RibManager,
 
-    pub fn init(parent: *Peer, alloc: std.mem.Allocator, targetRib: *RibManager) !Self {
+    adjRibInManager: ?AdjRibManager,
+    adjRibInSubscription: AdjRibSubscription,
+
+    pub fn init(parent: *Peer, alloc: Allocator, targetRib: *RibManager) !*Self {
         return .{
             .state = .IDLE,
             .parent = parent,
@@ -205,6 +215,8 @@ pub const Session = struct {
             .allocator = alloc,
             .eventQueue = try .init(alloc, .{ .count = 1, .backlog = 1 }),
             .targetRib = targetRib,
+            .adjRibInManager = null,
+            .adjRibInSubscription = .{ .callback = Self.onAdjRibInUpdate }
         };
     }
 
@@ -222,6 +234,13 @@ pub const Session = struct {
         self.delayOpenTimer.deinit();
 
         self.eventQueue.deinit(self.allocator);
+    }
+
+    pub fn onAdjRibInUpdate(sub: *AdjRibSubscription, update: *AdjRibUpdate) void {
+        const self: Self = @fieldParentPtr("adjRibInSubscription", sub);
+
+        _ = self;
+        _ = update;
     }
 
     pub fn releaseResources(self: *Self) void {

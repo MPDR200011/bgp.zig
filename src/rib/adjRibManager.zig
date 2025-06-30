@@ -12,12 +12,12 @@ const AdjRib = adjRib.AdjRib;
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
-const SubscriberRef = struct {};
-const UpdateCtx = struct {
-    ref: *SubscriberRef,
+pub const Subscription = struct {
+    callback: *const fn(*Subscription, *Update) void,
+};
+pub const Update = struct {
     // adds, removes, attrs
 };
-const UpdateSubCallback = fn(*UpdateCtx) void {};
 
 pub const AdjRibManager = struct {
     const Self = @This();
@@ -29,15 +29,18 @@ pub const AdjRibManager = struct {
     neighbor: ip.IpAddress,
     adjRib: AdjRib,
 
+    subscription: *Subscription,
+
     // subcribers (sessions that need to announce updates)
     // worker (processing updates should be async)
 
-    pub fn init(alloc: Allocator, neighbor: ip.IpAddress, targetAdjRib: AdjRib) !Self {
+    pub fn init(alloc: Allocator, neighbor: ip.IpAddress, subscription: *Subscription) !Self {
         return Self{
             .allocator = alloc,
             .ribMutex = .{},
             .neighbor = neighbor,
-            .adjRib = targetAdjRib,
+            .adjRib = .init(neighbor, alloc),
+            .subscription = subscription
         };
     }
 
