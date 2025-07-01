@@ -44,7 +44,7 @@ pub const AdjRibManager = struct {
         };
     }
 
-    pub fn deinit(self: Self) Self {
+    pub fn deinit(self: *Self) void {
         self.adjRib.deinit();
     }
 

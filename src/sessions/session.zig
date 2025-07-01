@@ -196,7 +196,10 @@ pub const Session = struct {
     adjRibInManager: ?AdjRibManager,
     adjRibInSubscription: AdjRibSubscription,
 
-    pub fn init(parent: *Peer, alloc: Allocator, targetRib: *RibManager) !*Self {
+    adjRibOutManager: ?AdjRibManager,
+    adjRibOutSubscription: AdjRibSubscription,
+
+    pub fn init(parent: *Peer, alloc: Allocator, targetRib: *RibManager) !Self {
         return .{
             .state = .IDLE,
             .parent = parent,
@@ -216,7 +219,9 @@ pub const Session = struct {
             .eventQueue = try .init(alloc, .{ .count = 1, .backlog = 1 }),
             .targetRib = targetRib,
             .adjRibInManager = null,
-            .adjRibInSubscription = .{ .callback = Self.onAdjRibInUpdate }
+            .adjRibInSubscription = .{ .callback = Self.onAdjRibInUpdate },
+            .adjRibOutManager = null,
+            .adjRibOutSubscription = .{ .callback = Self.onAdjRibOutUpdate }
         };
     }
 
@@ -237,16 +242,40 @@ pub const Session = struct {
     }
 
     pub fn onAdjRibInUpdate(sub: *AdjRibSubscription, update: *AdjRibUpdate) void {
-        const self: Self = @fieldParentPtr("adjRibInSubscription", sub);
+        const self: *Self = @fieldParentPtr("adjRibInSubscription", sub);
 
         _ = self;
         _ = update;
     }
 
+    pub fn onAdjRibOutUpdate(sub: *AdjRibSubscription, update: *AdjRibUpdate) void {
+        const self: *Self = @fieldParentPtr("adjRibOutSubscription", sub);
+
+        _ = self;
+        _ = update;
+    }
+
+    pub fn extractInfoFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) void {
+        self.info = .{
+            .peerId = msg.peerRouterId,
+            .peerAsn = msg.asNumber,
+        };
+
+        self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibInSubscription);
+        self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription);
+    }
+
     pub fn releaseResources(self: *Self) void {
         self.info = null;
 
-        // TODO might want to release Adj Ribs in this spot?
+        if (self.adjRibInManager) |*adjRibInManager| {
+            adjRibInManager.deinit();
+            self.adjRibInManager = null;
+        }
+        if (self.adjRibOutManager) |*adjRibOutManager| {
+            adjRibOutManager.deinit();
+            self.adjRibOutManager = null;
+        }
     }
 
     pub fn createOpenMessage(self: *Self, holdTimerValue: u16) messageModel.OpenMessage {
@@ -269,13 +298,6 @@ pub const Session = struct {
         }
     }
 
-    pub fn extractInfoFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) void {
-        self.info = .{
-            .peerId = msg.peerRouterId,
-            .peerAsn = msg.asNumber,
-        };
-    }
-
     pub fn shutdownFatal(self: *Self) void {
         std.log.info("Initiated fatal shutdown!", .{});
 
@@ -289,6 +311,7 @@ pub const Session = struct {
             .IDLE, .CONNECT, .ACTIVE => {},
         }
 
+        self.releaseResources();
         self.killAllTimers();
         self.closeConnection();
         self.connectionRetryCount += 1;
