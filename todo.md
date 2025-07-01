@@ -1,12 +1,6 @@
 ## TODOs
 
-- AdjRib lifecycle
-  - Init when session transitions to ESTABLISHED
-  - Close down/clean up when session ends:
-    - Fatals
-    - Everything else
-
-- [ ] Adj Rib Subscriber model
+- [x] Adj Rib Subscriber model
 - [ ] Main Rib Subscriber model
 - [ ] Universal/Shared Async task executor for RIB operations
 
