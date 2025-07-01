@@ -13,7 +13,7 @@ fn handleStop(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.Cease, .Default);
     try session.sendMessage(.{ .NOTIFICATION = msg });
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
 
     session.connectionRetryTimer.cancel();
@@ -28,7 +28,7 @@ fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
     const msg: model.NotificationMessage = .initNoData(.HoldTimerExpired, .Default);
     try session.sendMessage(.{ .NOTIFICATION = msg });
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
 
     session.connectionRetryTimer.cancel();
@@ -52,7 +52,7 @@ fn handleKeepAliveTimerExpires(session: *Session) !PostHandlerAction {
 fn handleTcpFailed(session: *Session) !PostHandlerAction {
     session.connectionRetryTimer.cancel();
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
 
     session.connectionRetryCount += 1;
@@ -65,7 +65,7 @@ fn handleConnectionCollision(session: *Session) !PostHandlerAction {
     try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
-    session.releaseResources();
+    session.releaseBgpResources();
 
     session.connectionRetryCount += 1;
 
@@ -90,7 +90,7 @@ pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !
 
     session.connectionRetryTimer.cancel();
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
 
     // TODO peer oscillation dampening here

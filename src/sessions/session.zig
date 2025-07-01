@@ -226,7 +226,7 @@ pub const Session = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.releaseResources();
+        self.releaseBgpResources();
         self.closeConnection();
 
         self.messageReader.deinit();
@@ -255,7 +255,7 @@ pub const Session = struct {
         _ = update;
     }
 
-    pub fn extractInfoFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) void {
+    pub fn initBgpResourcesFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) void {
         self.info = .{
             .peerId = msg.peerRouterId,
             .peerAsn = msg.asNumber,
@@ -265,7 +265,7 @@ pub const Session = struct {
         self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription);
     }
 
-    pub fn releaseResources(self: *Self) void {
+    pub fn releaseBgpResources(self: *Self) void {
         self.info = null;
 
         if (self.adjRibInManager) |*adjRibInManager| {
@@ -311,7 +311,7 @@ pub const Session = struct {
             .IDLE, .CONNECT, .ACTIVE => {},
         }
 
-        self.releaseResources();
+        self.releaseBgpResources();
         self.killAllTimers();
         self.closeConnection();
         self.connectionRetryCount += 1;

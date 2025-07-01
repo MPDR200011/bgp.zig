@@ -71,7 +71,7 @@ fn handleOpenReceived(session: *Session, msg: model.OpenMessage) !PostHandlerAct
 
     session.connectionRetryTimer.cancel();
 
-    session.extractInfoFromOpenMessage(msg);
+    session.initBgpResourcesFromOpenMessage(msg);
 
     const negotiatedHoldTimer = common.getNegotiatedHoldTimer(session, msg.holdTime);
 
@@ -95,13 +95,13 @@ fn handleNotification(session: *Session, notif: model.NotificationMessage) !Post
     if (session.delayOpenTimer.isActive()) {
         session.delayOpenTimer.cancel();
 
-        session.releaseResources();
+        session.releaseBgpResources();
         session.closeConnection();
 
         return .transition(.IDLE);
     }
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
     session.connectionRetryCount += 1;
 

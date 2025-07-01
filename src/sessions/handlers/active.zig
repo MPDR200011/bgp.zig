@@ -63,7 +63,7 @@ fn handleSuccessfulTcpConnection(session: *Session, connection: std.net.Stream) 
 fn handleTcpFailed(session: *Session) !PostHandlerAction {
     try session.connectionRetryTimer.reschedule();
     session.delayOpenTimer.cancel();
-    session.releaseResources();
+    session.releaseBgpResources();
 
     session.connectionRetryCount += 1;
 
@@ -78,7 +78,7 @@ fn handleOpenReceived(session: *Session, msg: model.OpenMessage) !PostHandlerAct
 
     session.connectionRetryTimer.cancel();
 
-    session.extractInfoFromOpenMessage(msg);
+    session.initBgpResourcesFromOpenMessage(msg);
 
     const negotiatedHoldTimer = common.getNegotiatedHoldTimer(session, msg.holdTime);
 
@@ -102,13 +102,13 @@ pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !
     if (session.delayOpenTimer.isActive()) {
         session.delayOpenTimer.cancel();
 
-        session.releaseResources();
+        session.releaseBgpResources();
         session.closeConnection();
 
         return .transition(.IDLE);
     }
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
     session.connectionRetryCount += 1;
 

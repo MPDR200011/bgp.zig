@@ -17,7 +17,7 @@ fn handleStop(session: *Session) !PostHandlerAction {
 
     // TODO: delete all routes
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
     session.connectionRetryCount = 0;
 
@@ -33,7 +33,7 @@ fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
     try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
-    session.releaseResources();
+    session.releaseBgpResources();
     std.debug.print("HOLD TIMER", .{});
     session.closeConnection();
     session.connectionRetryCount += 1;
@@ -59,7 +59,7 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
 
     // TODO delete all routes
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
     session.connectionRetryCount += 1;
 
@@ -74,7 +74,7 @@ fn handleConnectionCollision(session: *Session) !PostHandlerAction {
 
     // TODO delete all routes
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
 
     session.connectionRetryCount += 1;

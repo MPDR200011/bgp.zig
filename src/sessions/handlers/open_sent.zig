@@ -16,7 +16,7 @@ pub fn handleStop(session: *Session) !PostHandlerAction {
     try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
     session.connectionRetryCount = 0;
 
@@ -32,7 +32,7 @@ pub fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
     try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
     session.connectionRetryCount += 1;
 
@@ -51,7 +51,7 @@ fn handleOpenReceived(session: *Session, msg: model.OpenMessage) !PostHandlerAct
     session.connectionRetryTimer.cancel();
     session.delayOpenTimer.cancel();
 
-    session.extractInfoFromOpenMessage(msg);
+    session.initBgpResourcesFromOpenMessage(msg);
 
     const negotiatedHoldTimer = common.getNegotiatedHoldTimer(session, msg.holdTime);
 
@@ -70,7 +70,7 @@ fn handleConnectionCollision(session: *Session) !PostHandlerAction {
     try session.sendMessage(.{ .NOTIFICATION = msg });
 
     session.connectionRetryTimer.cancel();
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
 
     session.connectionRetryCount += 1;
@@ -87,7 +87,7 @@ pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !
 
     session.connectionRetryTimer.cancel();
 
-    session.releaseResources();
+    session.releaseBgpResources();
     session.closeConnection();
     session.connectionRetryCount += 1;
 
