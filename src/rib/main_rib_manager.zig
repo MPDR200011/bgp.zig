@@ -1,5 +1,6 @@
 const std = @import("std");
 const ip = @import("ip");
+const xev = @import("xev");
 
 const rib = @import("main_rib.zig");
 const debounced = @import("../utils/debounced.zig");
@@ -12,6 +13,18 @@ const Rib = rib.Rib;
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
+const Operation = union(enum) {
+    add: std.meta.Tuple(&[_]type{*Rib, Route, ip.IpAddress, PathAttributes}),
+    remove: std.meta.Tuple(&[_]type{*Rib, Route, ip.IpAddress})
+};
+
+const RibTask = struct {
+    allocator: Allocator,
+    mutex: *std.Thread.Mutex,
+    operation: Operation,
+    task: xev.ThreadPool.Task,
+};
+
 pub const RibManager = struct {
     const Self = @This();
 
@@ -20,14 +33,17 @@ pub const RibManager = struct {
     ribMutex: std.Thread.Mutex,
     rib: Rib,
 
+    threadPool: *xev.ThreadPool,
+
     // subcribers (sessions that need to announce updates)
     // worker (processing updates should be async)
 
-    pub fn init(alloc: Allocator) !Self {
+    pub fn init(alloc: Allocator, threadPool: *xev.ThreadPool) !Self {
         return Self{
             .allocator = alloc,
             .ribMutex = .{},
             .rib = .init(alloc),
+            .threadPool = threadPool,
         };
     }
 
@@ -35,17 +51,48 @@ pub const RibManager = struct {
         self.rib.deinit();
     }
 
-    pub fn setPath(self: *Self, route: Route, advertiser: ip.IpAddress, attrs: PathAttributes) !void {
-        self.ribMutex.lock();
-        defer self.ribMutex.unlock();
+    fn thredPoolCallback(task: *xev.ThreadPool.Task) void {
+        const ribTask: *RibTask = @fieldParentPtr("task", task);
+        ribTask.mutex.lock();
+        ribTask.mutex.unlock();
 
-        try self.rib.setPath(route, advertiser, try attrs.clone(attrs.allocator));
+        switch (ribTask.operation) {
+            .add => |addParams| {
+                @call(.always_inline, Rib.setPath, addParams) catch |err| {
+                    std.debug.print("Fatal: Error while adding path to Rib: {}", .{err});
+                    std.process.abort();
+                };
+            },
+            .remove => |removeParams| {
+                // FIXME this result is important for updates
+                _ = @call(.always_inline, Rib.removePath, removeParams);
+            }
+        }
+
+        ribTask.allocator.destroy(ribTask);
+    }
+
+    pub fn setPath(self: *Self, route: Route, advertiser: ip.IpAddress, attrs: PathAttributes) !void {
+        const task = try self.allocator.create(RibTask);
+        task.* = .{
+            .allocator = self.allocator,
+            .mutex = &self.ribMutex,
+            .operation = .{ .add = .{&self.rib, route, advertiser, try attrs.clone(attrs.allocator)} },
+            .task = .{ .callback = Self.thredPoolCallback }
+        };
+
+        self.threadPool.schedule(xev.ThreadPool.Batch.from(&task.task));
     }
 
     pub fn removePath(self: *Self, route: Route, advertiser: ip.IpAddress) !void {
-        self.ribMutex.lock();
-        defer self.ribMutex.unlock();
+        const task = try self.allocator.create(RibTask);
+        task.* = .{
+            .allocator = self.allocator,
+            .mutex = &self.ribMutex,
+            .operation = .{ .remove = .{&self.rib, route, advertiser} },
+            .task = .{ .callback = Self.thredPoolCallback }
+        };
 
-        _ = self.rib.removePath(route, advertiser);
+        self.threadPool.schedule(xev.ThreadPool.Batch.from(&task.task));
     }
 };
