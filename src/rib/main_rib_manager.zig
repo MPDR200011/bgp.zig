@@ -14,8 +14,8 @@ const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
 const Operation = union(enum) {
-    add: std.meta.Tuple(&[_]type{*Rib, Route, ip.IpAddress, PathAttributes}),
-    remove: std.meta.Tuple(&[_]type{*Rib, Route, ip.IpAddress})
+    set: std.meta.ArgsTuple(@TypeOf(Rib.setPath)),
+    remove: std.meta.ArgsTuple(@TypeOf(Rib.removePath)),
 };
 
 const RibTask = struct {
@@ -57,7 +57,7 @@ pub const RibManager = struct {
         ribTask.mutex.unlock();
 
         switch (ribTask.operation) {
-            .add => |addParams| {
+            .set => |addParams| {
                 @call(.always_inline, Rib.setPath, addParams) catch |err| {
                     std.debug.print("Fatal: Error while adding path to Rib: {}", .{err});
                     std.process.abort();
@@ -77,7 +77,7 @@ pub const RibManager = struct {
         task.* = .{
             .allocator = self.allocator,
             .mutex = &self.ribMutex,
-            .operation = .{ .add = .{&self.rib, route, advertiser, try attrs.clone(attrs.allocator)} },
+            .operation = .{ .set = .{&self.rib, route, advertiser, try attrs.clone(attrs.allocator)} },
             .task = .{ .callback = Self.thredPoolCallback }
         };
 
