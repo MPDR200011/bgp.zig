@@ -15,8 +15,8 @@ const openSentHandler = @import("handlers/open_sent.zig");
 const openConfirmHandler = @import("handlers/open_confirm.zig");
 const establishedHandler = @import("handlers/established.zig");
 
-const ribManager = @import("../rib/mainRibManager.zig");
-const adjRibManager = @import("../rib/adjRibManager.zig");
+const ribManager = @import("../rib/main_rib_manager.zig");
+const adjRibManager = @import("../rib/adj_rib_manager.zig");
 
 const Allocator = std.mem.Allocator;
 
