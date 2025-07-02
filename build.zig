@@ -83,6 +83,7 @@ pub fn build(b: *std.Build) void {
         createDependencyModule(b, "clap", "clap", target, optimize),
         createDependencyModule(b, "zul", "zul", target, optimize),
         createDependencyModule(b, "ip", "ip_zig", target, optimize),
+        createDependencyModule(b, "xev", "libxev", target, optimize),
     };
 
     const exes = [_]ExeSpec{

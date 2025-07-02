@@ -48,6 +48,10 @@
             .url = "git+https://github.com/MPDR200011/ip.zig#73d5c56fc8a544c224b79a97a4bd982317608172",
             .hash = "ip_zig-0.0.0-UpeXbd94AAC-R4JXZOEnvlweNOaI5_ezHm9BxHGqmpPp",
         },
+        .libxev = .{
+            .url = "git+https://github.com/mitchellh/libxev.git#75a10d0fb374e8eb84948dcfc68d865e755e59c2",
+            .hash = "libxev-0.0.0-86vtcyMBEwA-UpcjfOICyI2GYG8o6MiRbinS1_8g1_rw",
+        },
     },
     .paths = .{
         "build.zig",
