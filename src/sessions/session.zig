@@ -24,7 +24,7 @@ const RibManager = ribManager.RibManager;
 
 const AdjRibManager = adjRibManager.AdjRibManager;
 const AdjRibSubscription = adjRibManager.Subscription;
-const AdjRibUpdate = adjRibManager.Update;
+const AdjRibOperation = adjRibManager.Operation;
 
 const Timer = timer.Timer;
 
@@ -241,14 +241,14 @@ pub const Session = struct {
         self.eventQueue.deinit(self.allocator);
     }
 
-    pub fn onAdjRibInUpdate(sub: *AdjRibSubscription, update: *AdjRibUpdate) void {
+    pub fn onAdjRibInUpdate(sub: *AdjRibSubscription, update: *const AdjRibOperation) void {
         const self: *Self = @fieldParentPtr("adjRibInSubscription", sub);
 
         _ = self;
         _ = update;
     }
 
-    pub fn onAdjRibOutUpdate(sub: *AdjRibSubscription, update: *AdjRibUpdate) void {
+    pub fn onAdjRibOutUpdate(sub: *AdjRibSubscription, update: *const AdjRibOperation) void {
         const self: *Self = @fieldParentPtr("adjRibOutSubscription", sub);
 
         _ = self;
@@ -261,8 +261,8 @@ pub const Session = struct {
             .peerAsn = msg.asNumber,
         };
 
-        self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibInSubscription);
-        self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription);
+        self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibInSubscription, self.targetRib.threadPool);
+        self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription, self.targetRib.threadPool);
     }
 
     pub fn releaseBgpResources(self: *Self) void {
