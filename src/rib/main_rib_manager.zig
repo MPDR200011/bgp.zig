@@ -14,8 +14,20 @@ const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
 const Operation = union(enum) {
+    const Self = @This();
+
     set: std.meta.ArgsTuple(@TypeOf(Rib.setPath)),
     remove: std.meta.ArgsTuple(@TypeOf(Rib.removePath)),
+
+    pub fn deinit(self: *Self) void {
+        switch (self) {
+            .set => |setOp| {
+                const attrs: PathAttributes = setOp[2];
+                attrs.deinit();
+            },
+            else => {}
+        }
+    }
 };
 
 const RibTask = struct {
@@ -69,6 +81,7 @@ pub const RibManager = struct {
             }
         }
 
+        ribTask.operation.deinit();
         ribTask.allocator.destroy(ribTask);
     }
 
