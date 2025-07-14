@@ -86,7 +86,7 @@ pub const AdjRibManager = struct {
     fn threadPoolCallback(task: *xev.ThreadPool.Task) void {
         const adjRibTask: *AdjRibTask = @fieldParentPtr("task", task);
         adjRibTask.mutex.lock();
-        adjRibTask.mutex.unlock();
+        defer adjRibTask.mutex.unlock();
 
         switch (adjRibTask.operation) {
             .set => |addParams| {
