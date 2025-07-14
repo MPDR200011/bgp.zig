@@ -34,6 +34,10 @@ pub const RouteHashFns = struct {
 };
 
 
+// Utility struct for rib managers to keep track of inflight tasks in the
+// threadpool.
+// Useful for preventing the cleaning up of resources while there are tasks in
+// the queue yet to execute, which might cause use after free issues
 pub const TaskCounter = struct {
     const Self = @This();
 
