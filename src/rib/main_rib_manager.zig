@@ -20,9 +20,9 @@ const Operation = union(enum) {
     remove: std.meta.ArgsTuple(@TypeOf(Rib.removePath)),
 
     pub fn deinit(self: *Self) void {
-        switch (self) {
+        switch (self.*) {
             .set => |setOp| {
-                const attrs: PathAttributes = setOp[2];
+                const attrs: PathAttributes = setOp[3];
                 attrs.deinit();
             },
             else => {}
@@ -63,7 +63,7 @@ pub const RibManager = struct {
         self.rib.deinit();
     }
 
-    fn thredPoolCallback(task: *xev.ThreadPool.Task) void {
+    fn threadPoolCallback(task: *xev.ThreadPool.Task) void {
         const ribTask: *RibTask = @fieldParentPtr("task", task);
         ribTask.mutex.lock();
         ribTask.mutex.unlock();
@@ -91,7 +91,7 @@ pub const RibManager = struct {
             .allocator = self.allocator,
             .mutex = &self.ribMutex,
             .operation = .{ .set = .{&self.rib, route, advertiser, try attrs.clone(attrs.allocator)} },
-            .task = .{ .callback = Self.thredPoolCallback }
+            .task = .{ .callback = Self.threadPoolCallback }
         };
 
         self.threadPool.schedule(xev.ThreadPool.Batch.from(&task.task));
@@ -103,7 +103,7 @@ pub const RibManager = struct {
             .allocator = self.allocator,
             .mutex = &self.ribMutex,
             .operation = .{ .remove = .{&self.rib, route, advertiser} },
-            .task = .{ .callback = Self.thredPoolCallback }
+            .task = .{ .callback = Self.threadPoolCallback }
         };
 
         self.threadPool.schedule(xev.ThreadPool.Batch.from(&task.task));
