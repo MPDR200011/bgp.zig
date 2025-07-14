@@ -6,7 +6,7 @@ const rib = @import("main_rib.zig");
 const debounced = @import("../utils/debounced.zig");
 const model = @import("../messaging/model.zig");
 
-const SinglyLinkedList = std.SinglyLinkedList;
+const DoublyLinkedList = std.DoublyLinkedList;
 const Allocator = std.mem.Allocator;
 
 const Rib = rib.Rib;
@@ -48,7 +48,7 @@ const RibTask = struct {
 
 pub const RibManager = struct {
     const Self = @This();
-    const SubscriberList = SinglyLinkedList(*Subscription);
+    const SubscriberList = DoublyLinkedList(*Subscription);
     const SubscriberHandle = *SubscriberHandle.Node;
 
     allocator: Allocator,
@@ -76,22 +76,28 @@ pub const RibManager = struct {
     }
 
     pub fn deinit(self: Self) Self {
+        // FIXME: Handle in-flight operation, a.k.a tasks in the threadpool
         self.rib.deinit();
+
+        // Main rib manager is only deinited during process shutdown.
+        // At that point, peer sessions have already gone through the shutdown
+        // process, during which time the subscription is deleted.
+        std.debug.assert(self.subscribers.len() == 0);
     }
 
-    fn addRibSubscriber(self: *Self, subscription: *Subscription) Allocator.Error!SubscriberHandle {
+    fn addUpdatesSubscription(self: *Self, subscription: *Subscription) Allocator.Error!SubscriberHandle {
         self.subMutex.lock();
         defer self.subMutex.unlock();
 
         const node: SubscriberHandle = try self.allocator.create(SubscriberList.Node);
         node.data = subscription;
 
-        try self.subscribers.prepend(node);
+        try self.subscribers.append(node);
 
         return node;
     }
 
-    fn removeRibSubscriber(self: *Self, handle: *SubscriberHandle) void {
+    fn removeUpdatesSubscription(self: *Self, handle: *SubscriberHandle) void {
         self.subMutex.lock();
         defer self.subMutex.unlock();
 

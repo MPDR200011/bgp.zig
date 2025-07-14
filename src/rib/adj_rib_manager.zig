@@ -72,6 +72,7 @@ pub const AdjRibManager = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        // FIXME: Handle in-flight operation, a.k.a tasks in the threadpool
         self.clearAdjRib();
         self.adjRib.deinit();
     }

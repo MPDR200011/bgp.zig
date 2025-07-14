@@ -1,8 +1,9 @@
 ## TODOs
 
 - [x] Adj Rib Subscriber model
-- [ ] Main Rib Subscriber model
-- [ ] Universal/Shared Async task executor for RIB operations
+- [x] Main Rib Subscriber model
+- [x] Universal/Shared Async task executor for RIB operations
+- [ ] Address in-flight threadpool tasks at deinit time
 
 
 ## Ideas
