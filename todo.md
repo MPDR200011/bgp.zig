@@ -3,7 +3,8 @@
 - [x] Adj Rib Subscriber model
 - [x] Main Rib Subscriber model
 - [x] Universal/Shared Async task executor for RIB operations
-- [ ] Address in-flight threadpool tasks at deinit time
+- [x] Address in-flight threadpool tasks at deinit time
+- [ ] IMPORTANT: Main rib can't send updates back to advertisers
 
 
 ## Ideas

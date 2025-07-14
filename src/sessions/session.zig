@@ -246,6 +246,7 @@ pub const Session = struct {
 
         _ = self;
         _ = update;
+        // TODO: send update to mainRib
     }
 
     pub fn onAdjRibOutUpdate(sub: *AdjRibSubscription, update: *const AdjRibOperation) void {
@@ -253,6 +254,7 @@ pub const Session = struct {
 
         _ = self;
         _ = update;
+        // TODO: send update to peer
     }
 
     pub fn initBgpResourcesFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) void {
@@ -263,10 +265,13 @@ pub const Session = struct {
 
         self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibInSubscription, self.targetRib.threadPool);
         self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription, self.targetRib.threadPool);
+        // TODO: subscribe to mainRib with adjRibOut handler
     }
 
     pub fn releaseBgpResources(self: *Self) void {
         self.info = null;
+
+        // TODO: remove mainRibSubscription
 
         if (self.adjRibInManager) |*adjRibInManager| {
             adjRibInManager.deinit();
