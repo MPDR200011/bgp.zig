@@ -5,6 +5,7 @@ const xev = @import("xev");
 const rib = @import("main_rib.zig");
 const debounced = @import("../utils/debounced.zig");
 const model = @import("../messaging/model.zig");
+const common = @import("common.zig");
 
 const DoublyLinkedList = std.DoublyLinkedList;
 const Allocator = std.mem.Allocator;
@@ -13,6 +14,8 @@ const Rib = rib.Rib;
 
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
+
+const TaskCounter = common.TaskCounter;
 
 const Operation = union(enum) {
     const Self = @This();
@@ -58,11 +61,7 @@ pub const RibManager = struct {
     subMutex: std.Thread.Mutex,
     subscribers: SubscriberList,
 
-
-    taskCountMutex: std.Thread.Mutex,
-    taskCountCond: std.Thread.Condition,
-    inFlightTaskCount: u32,
-    shutdown: bool = false,
+    taskCounter: TaskCounter,
 
     pub fn init(alloc: Allocator, threadPool: *xev.ThreadPool) !Self {
         return Self{
@@ -72,14 +71,12 @@ pub const RibManager = struct {
             .threadPool = threadPool,
             .subMutex = .{},
             .subscribers = .{},
-            .taskCountMutex = .{},
-            .taskCountCond = .{},
-            .inFlightTaskCount = 0,
+            .taskCounter = .default,
         };
     }
 
     pub fn deinit(self: *Self) Self {
-        self.waitForTaskDrain();
+        self.taskCounter.waitForDrainAndShutdown();
 
         self.rib.deinit();
 
@@ -87,16 +84,6 @@ pub const RibManager = struct {
         // At that point, peer sessions have already gone through the shutdown
         // process, during which time the subscription is deleted.
         std.debug.assert(self.subscribers.len() == 0);
-    }
-
-    fn waitForTaskDrain(self: *Self) void {
-        self.taskCountMutex.lock();
-        defer self.taskCountMutex.unlock();
-
-        while (self.inFlightTaskCount > 0) {
-            self.taskCountCond.wait(&self.taskCountMutex);
-        }
-        self.shutdown = true;
     }
 
     fn addUpdatesSubscription(self: *Self, subscription: *Subscription) Allocator.Error!SubscriberHandle {
@@ -123,6 +110,9 @@ pub const RibManager = struct {
     fn threadPoolCallback(task: *xev.ThreadPool.Task) void {
         const ribTask: *RibTask = @fieldParentPtr("task", task);
         const self = ribTask.self;
+
+        defer self.taskCounter.decrementTasks();
+
         {
             self.ribMutex.lock();
             defer self.ribMutex.unlock();
@@ -152,23 +142,12 @@ pub const RibManager = struct {
             }
         }
 
-        self.taskCountMutex.lock();
-        defer self.taskCountMutex.unlock();
-        self.inFlightTaskCount -= 1;
-        self.taskCountCond.signal();
-
         ribTask.operation.deinit();
         self.allocator.destroy(ribTask);
     }
 
     fn scheduleTask(self: *Self, task: *RibTask) void {
-        self.taskCountMutex.lock();
-        defer self.taskCountMutex.unlock();
-
-        std.debug.assert(!self.shutdown);
-
-        self.inFlightTaskCount += 1;
-
+        self.taskCounter.incrementTasks();
         self.threadPool.schedule(xev.ThreadPool.Batch.from(&task.task));
     }
 

@@ -34,3 +34,48 @@ pub const RouteHashFns = struct {
 };
 
 
+pub const TaskCounter = struct {
+    const Self = @This();
+
+    taskCountMutex: std.Thread.Mutex,
+    taskCountCond: std.Thread.Condition,
+    inFlightTaskCount: u32,
+    shutdown: bool,
+
+    pub const default: Self = .{
+        .taskCountMutex = .{},
+        .taskCountCond = .{},
+        .inFlightTaskCount = 0,
+        .shutdown = false,
+    };
+
+    pub fn incrementTasks(self: *Self) void {
+        self.taskCountMutex.lock();
+        defer self.taskCountMutex.unlock();
+
+        std.debug.assert(!self.shutdown);
+
+        self.inFlightTaskCount += 1;
+    }
+
+    pub fn decrementTasks(self: *Self) void {
+        self.taskCountMutex.lock();
+        defer self.taskCountMutex.unlock();
+
+        std.debug.assert(self.inFlightTaskCount > 0);
+
+        self.inFlightTaskCount -= 1;
+
+        self.taskCountCond.signal();
+    }
+
+    pub fn waitForDrainAndShutdown(self: *Self) void {
+        self.taskCountMutex.lock();
+        defer self.taskCountMutex.unlock();
+
+        while (self.inFlightTaskCount > 0) {
+            self.taskCountCond.wait(&self.taskCountMutex);
+        }
+        self.shutdown = true;
+    }
+};
