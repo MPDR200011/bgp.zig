@@ -207,8 +207,8 @@ pub fn main() !void {
     var ribThreadPool = xev.ThreadPool.init(.{
         .max_threads = @intCast(std.Thread.getCpuCount() catch 4)
     });
-    defer ribThreadPool.deinit();
     defer ribThreadPool.shutdown();
+    defer ribThreadPool.deinit();
 
     var mainRib = try ribManager.RibManager.init(gpa, &ribThreadPool);
 
