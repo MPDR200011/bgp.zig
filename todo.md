@@ -6,6 +6,7 @@
 - [x] Address in-flight threadpool tasks at deinit time
 - [ ] IMPORTANT: Main rib can't send updates back to advertisers
 - [ ] TEST THIS SHIT, I HAVEN'T RUN THIS IN A WHILE...................
+- [ ] Transmit unrecognized optional transitive attributes
 
 
 ## Ideas
