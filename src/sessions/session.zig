@@ -194,7 +194,7 @@ pub const Session = struct {
 
     eventQueue: *zul.ThreadPool(Self.handleEvent),
 
-    targetRib: *RibManager,
+    mainRib: *RibManager,
     mainRibSubscription: OutAdjRibCallback,
 
     adjRibInManager: ?AdjRibManager,
@@ -277,11 +277,11 @@ pub const Session = struct {
             .peerId = msg.peerRouterId,
             .peerAsn = msg.asNumber,
         };
-        self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription, self.targetRib.threadPool);
+        self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription, self.mainRib.threadPool);
 
-        try self.targetRib.addUpdatesCallback(&self.mainRibSubscription);
+        try self.mainRib.addUpdatesCallback(&self.mainRibSubscription);
 
-        self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibInSubscription, self.targetRib.threadPool);
+        self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibInSubscription, self.mainRib.threadPool);
     }
 
     pub fn releaseBgpResources(self: *Self) void {
@@ -292,7 +292,7 @@ pub const Session = struct {
             self.adjRibInManager = null;
         }
 
-        self.targetRib.removeUpdatesCallback(&self.mainRibSubscription);
+        self.mainRib.removeUpdatesCallback(&self.mainRibSubscription);
 
         if (self.adjRibOutManager) |*adjRibOutManager| {
             adjRibOutManager.deinit();
@@ -446,11 +446,11 @@ pub const Session = struct {
         const advertiser = ip.IpAddress{ .V4 = self.parent.sessionAddresses.peerAddress };
 
         for (msg.withdrawnRoutes) |route| {
-            try self.targetRib.removePath(route, advertiser);
+            try self.mainRib.removePath(route, advertiser);
         }
 
         for (msg.advertisedRoutes) |route| {
-            try self.targetRib.setPath(route, advertiser, msg.pathAttributes);
+            try self.mainRib.setPath(route, advertiser, msg.pathAttributes);
         }
     }
 };
