@@ -21,6 +21,9 @@ const adjRibManager = @import("../rib/adj_rib_manager.zig");
 const Allocator = std.mem.Allocator;
 
 const RibManager = ribManager.RibManager;
+const OutAdjRibCallback = ribManager.OutAdjRibCallback;
+const MainRibOperation = ribManager.Operation;
+const SubHandle = ribManager.RibManager.CallbackHandle;
 
 const AdjRibManager = adjRibManager.AdjRibManager;
 const AdjRibSubscription = adjRibManager.Subscription;
@@ -192,6 +195,7 @@ pub const Session = struct {
     eventQueue: *zul.ThreadPool(Self.handleEvent),
 
     targetRib: *RibManager,
+    mainRibSubscription: OutAdjRibCallback,
 
     adjRibInManager: ?AdjRibManager,
     adjRibInSubscription: AdjRibSubscription,
@@ -218,6 +222,10 @@ pub const Session = struct {
             .allocator = alloc,
             .eventQueue = try .init(alloc, .{ .count = 1, .backlog = 1 }),
             .targetRib = targetRib,
+            .mainRibSubscription = .{
+                .peerId = .{.V4 = parent.sessionAddresses.peerAddress},
+                .callback = Self.onMainRibOutUpdate,
+            },
             .adjRibInManager = null,
             .adjRibInSubscription = .{ .callback = Self.onAdjRibInUpdate },
             .adjRibOutManager = null,
@@ -249,6 +257,13 @@ pub const Session = struct {
         // TODO: send update to mainRib
     }
 
+    pub fn onMainRibOutUpdate(sub: *OutAdjRibCallback, update: *const MainRibOperation) void {
+        const self: *Self = @fieldParentPtr("mainRibSubscription", sub);
+
+        _ = self;
+        _ = update;
+    }
+
     pub fn onAdjRibOutUpdate(sub: *AdjRibSubscription, update: *const AdjRibOperation) void {
         const self: *Self = @fieldParentPtr("adjRibOutSubscription", sub);
 
@@ -257,26 +272,28 @@ pub const Session = struct {
         // TODO: send update to peer
     }
 
-    pub fn initBgpResourcesFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) void {
+    pub fn initBgpResourcesFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) !void {
         self.info = .{
             .peerId = msg.peerRouterId,
             .peerAsn = msg.asNumber,
         };
+        self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription, self.targetRib.threadPool);
+
+        try self.targetRib.addUpdatesCallback(&self.mainRibSubscription);
 
         self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibInSubscription, self.targetRib.threadPool);
-        self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription, self.targetRib.threadPool);
-        // TODO: subscribe to mainRib with adjRibOut handler
     }
 
     pub fn releaseBgpResources(self: *Self) void {
         self.info = null;
 
-        // TODO: remove mainRibSubscription
-
         if (self.adjRibInManager) |*adjRibInManager| {
             adjRibInManager.deinit();
             self.adjRibInManager = null;
         }
+
+        self.targetRib.removeUpdatesCallback(&self.mainRibSubscription);
+
         if (self.adjRibOutManager) |*adjRibOutManager| {
             adjRibOutManager.deinit();
             self.adjRibOutManager = null;
@@ -316,9 +333,9 @@ pub const Session = struct {
             .IDLE, .CONNECT, .ACTIVE => {},
         }
 
-        self.releaseBgpResources();
-        self.killAllTimers();
         self.closeConnection();
+        self.killAllTimers();
+        self.releaseBgpResources();
         self.connectionRetryCount += 1;
     }
 

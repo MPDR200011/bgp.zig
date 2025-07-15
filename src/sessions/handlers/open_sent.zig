@@ -51,7 +51,7 @@ fn handleOpenReceived(session: *Session, msg: model.OpenMessage) !PostHandlerAct
     session.connectionRetryTimer.cancel();
     session.delayOpenTimer.cancel();
 
-    session.initBgpResourcesFromOpenMessage(msg);
+    try session.initBgpResourcesFromOpenMessage(msg);
 
     const negotiatedHoldTimer = common.getNegotiatedHoldTimer(session, msg.holdTime);
 

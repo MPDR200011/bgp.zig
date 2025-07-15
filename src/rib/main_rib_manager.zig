@@ -37,6 +37,9 @@ pub const Operation = union(enum) {
 pub const OutAdjRibCallback = struct {
     peerId: ip.IpAddress,
     callback: *const fn(*OutAdjRibCallback, *const Operation) void,
+
+    // Leave this alone, it's only set and used by the RibManager
+    callbackHandle: ?RibManager.CallbackHandle = null,
 };
 
 
@@ -49,8 +52,8 @@ const RibTask = struct {
 
 pub const RibManager = struct {
     const Self = @This();
-    const OutAdjRibSubList = DoublyLinkedList(*OutAdjRibCallback);
-    const SubscriberHandle = *SubscriberHandle.Node;
+    const OutAdjRibCbList = DoublyLinkedList(*OutAdjRibCallback);
+    pub const CallbackHandle = *OutAdjRibCbList.Node;
 
     allocator: Allocator,
 
@@ -59,8 +62,8 @@ pub const RibManager = struct {
 
     threadPool: *xev.ThreadPool,
 
-    subMutex: std.Thread.Mutex,
-    subscribers: OutAdjRibSubList,
+    cbMutex: std.Thread.Mutex,
+    outAdjRibCbList: OutAdjRibCbList,
 
     taskCounter: TaskCounter,
 
@@ -70,8 +73,8 @@ pub const RibManager = struct {
             .ribMutex = .{},
             .rib = .init(alloc),
             .threadPool = threadPool,
-            .subMutex = .{},
-            .subscribers = .{},
+            .cbMutex = .{},
+            .outAdjRibCbList = .{},
             .taskCounter = .default,
         };
     }
@@ -84,28 +87,31 @@ pub const RibManager = struct {
         // Main rib manager is only deinited during process shutdown.
         // At that point, peer sessions have already gone through the shutdown
         // process, during which time the subscription is deleted.
-        std.debug.assert(self.subscribers.len() == 0);
+        std.debug.assert(self.outAdjRibCbList.len() == 0);
     }
 
-    fn addUpdatesSubscription(self: *Self, subscription: *OutAdjRibCallback) Allocator.Error!SubscriberHandle {
-        self.subMutex.lock();
-        defer self.subMutex.unlock();
+    pub fn addUpdatesCallback(self: *Self, callback: *OutAdjRibCallback) Allocator.Error!void {
+        self.cbMutex.lock();
+        defer self.cbMutex.unlock();
 
-        const node: SubscriberHandle = try self.allocator.create(OutAdjRibSubList.Node);
-        node.data = subscription;
+        const node: CallbackHandle = try self.allocator.create(OutAdjRibCbList.Node);
+        node.data = callback;
 
-        try self.subscribers.append(node);
+        self.outAdjRibCbList.append(node);
 
-        return node;
+        callback.callbackHandle = node;
     }
 
-    fn removeUpdatesSubscription(self: *Self, handle: *SubscriberHandle) void {
-        self.subMutex.lock();
-        defer self.subMutex.unlock();
+    pub fn removeUpdatesCallback(self: *Self, callback: *OutAdjRibCallback) void {
+        self.cbMutex.lock();
+        defer self.cbMutex.unlock();
 
-        self.subscribers.remove(handle);
+        std.debug.assert(callback.callbackHandle != null);
 
-        self.allocator.destroy(handle);
+        self.outAdjRibCbList.remove(callback.callbackHandle.?);
+
+        self.allocator.destroy(callback.callbackHandle.?);
+        callback.callbackHandle = null;
     }
 
     fn threadPoolCallback(task: *xev.ThreadPool.Task) void {
@@ -133,10 +139,10 @@ pub const RibManager = struct {
         }
 
         {
-            self.subMutex.lock();
-            defer self.subMutex.unlock();
+            self.cbMutex.lock();
+            defer self.cbMutex.unlock();
 
-            var it = self.subscribers.first;
+            var it = self.outAdjRibCbList.first;
             while (it) |subNode| : (it = subNode.next) {
                 const sub = subNode.data;
                 const peerAddress: ip.IpAddress = peerId: switch (ribTask.operation) {
