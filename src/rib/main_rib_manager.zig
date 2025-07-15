@@ -17,7 +17,7 @@ const PathAttributes = model.PathAttributes;
 
 const TaskCounter = common.TaskCounter;
 
-const Operation = union(enum) {
+pub const Operation = union(enum) {
     const Self = @This();
 
     set: std.meta.ArgsTuple(@TypeOf(Rib.setPath)),
@@ -34,8 +34,9 @@ const Operation = union(enum) {
     }
 };
 
-pub const Subscription = struct {
-    callback: *const fn(*Subscription, *const Operation) void,
+pub const OutAdjRibCallback = struct {
+    peerId: ip.IpAddress,
+    callback: *const fn(*OutAdjRibCallback, *const Operation) void,
 };
 
 
@@ -48,7 +49,7 @@ const RibTask = struct {
 
 pub const RibManager = struct {
     const Self = @This();
-    const SubscriberList = DoublyLinkedList(*Subscription);
+    const OutAdjRibSubList = DoublyLinkedList(*OutAdjRibCallback);
     const SubscriberHandle = *SubscriberHandle.Node;
 
     allocator: Allocator,
@@ -59,7 +60,7 @@ pub const RibManager = struct {
     threadPool: *xev.ThreadPool,
 
     subMutex: std.Thread.Mutex,
-    subscribers: SubscriberList,
+    subscribers: OutAdjRibSubList,
 
     taskCounter: TaskCounter,
 
@@ -86,11 +87,11 @@ pub const RibManager = struct {
         std.debug.assert(self.subscribers.len() == 0);
     }
 
-    fn addUpdatesSubscription(self: *Self, subscription: *Subscription) Allocator.Error!SubscriberHandle {
+    fn addUpdatesSubscription(self: *Self, subscription: *OutAdjRibCallback) Allocator.Error!SubscriberHandle {
         self.subMutex.lock();
         defer self.subMutex.unlock();
 
-        const node: SubscriberHandle = try self.allocator.create(SubscriberList.Node);
+        const node: SubscriberHandle = try self.allocator.create(OutAdjRibSubList.Node);
         node.data = subscription;
 
         try self.subscribers.append(node);
@@ -137,8 +138,22 @@ pub const RibManager = struct {
 
             var it = self.subscribers.first;
             while (it) |subNode| : (it = subNode.next) {
-                @call(.auto, subNode.data.callback, .{subNode.data, &ribTask.operation});
-                
+                const sub = subNode.data;
+                const peerAddress: ip.IpAddress = peerId: switch (ribTask.operation) {
+                    .set => |addParams| {
+                        break :peerId addParams[2];
+                    },
+                    .remove => |removeParams| {
+                        break :peerId removeParams[2];
+                    }
+                };
+
+                if (peerAddress.equals(sub.peerId)) {
+                    // Don't advertise stuff back to the peer we learned it from
+                    continue;
+                }
+
+                @call(.auto, subNode.data.callback, .{sub, &ribTask.operation});
             }
         }
 
@@ -151,22 +166,22 @@ pub const RibManager = struct {
         self.threadPool.schedule(xev.ThreadPool.Batch.from(&task.task));
     }
 
-    pub fn setPath(self: *Self, route: Route, advertiser: ip.IpAddress, attrs: PathAttributes) !void {
+    pub fn setPath(self: *Self, route: Route, advertiserAddress: ip.IpAddress, attrs: PathAttributes) !void {
         const task = try self.allocator.create(RibTask);
         task.* = .{
             .self = self,
-            .operation = .{ .set = .{&self.rib, route, advertiser, try attrs.clone(attrs.allocator)} },
+            .operation = .{ .set = .{&self.rib, route, advertiserAddress, try attrs.clone(attrs.allocator)} },
             .task = .{ .callback = Self.threadPoolCallback }
         };
 
         self.scheduleTask(task);
     }
 
-    pub fn removePath(self: *Self, route: Route, advertiser: ip.IpAddress) !void {
+    pub fn removePath(self: *Self, route: Route, advertiserAddress: ip.IpAddress) !void {
         const task = try self.allocator.create(RibTask);
         task.* = .{
             .self = self,
-            .operation = .{ .remove = .{&self.rib, route, advertiser} },
+            .operation = .{ .remove = .{&self.rib, route, advertiserAddress} },
             .task = .{ .callback = Self.threadPoolCallback }
         };
 
