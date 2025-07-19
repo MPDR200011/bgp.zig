@@ -7,6 +7,7 @@
 - [ ] IMPORTANT: Main rib can't send updates back to advertisers
 - [ ] TEST THIS SHIT, I HAVEN'T RUN THIS IN A WHILE...................
 - [ ] Transmit unrecognized optional transitive attributes
+- [ ] Rename Path -> Route
 
 
 ## Ideas
