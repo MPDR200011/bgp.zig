@@ -204,13 +204,13 @@ pub fn main() !void {
     const processConfig = managedProcessConfig.value;
     const localPort = processConfig.localConfig.localPort orelse 179;
 
-    var ribThreadPool = xev.ThreadPool.init(.{
-        .max_threads = @intCast(std.Thread.getCpuCount() catch 4)
-    });
-    defer ribThreadPool.shutdown();
-    defer ribThreadPool.deinit();
+    // var ribThreadPool = xev.ThreadPool.init(.{
+    //     .max_threads = @intCast(std.Thread.getCpuCount() catch 4)
+    // });
+    // defer ribThreadPool.shutdown();
+    // defer ribThreadPool.deinit();
 
-    var mainRib = try ribManager.RibManager.init(gpa, &ribThreadPool);
+    _ = try ribManager.RibManager.init(gpa);
 
     var peerMap = PeerMap.init(gpa);
     defer {
@@ -253,7 +253,7 @@ pub fn main() !void {
                     .localPort = localPort,
                     .peerPort = peerConfig.peerPort orelse 179,
                 },
-                }, peer, gpa, &mainRib) catch |err| {
+                }, peer, gpa) catch |err| {
                 std.log.err("Failed to initialize peer memory: {}", .{err});
                 return err;
             };

@@ -194,16 +194,10 @@ pub const Session = struct {
 
     eventQueue: *zul.ThreadPool(Self.handleEvent),
 
-    mainRib: *RibManager,
-    mainRibSubscription: OutAdjRibCallback,
-
     adjRibInManager: ?AdjRibManager,
-    adjRibInSubscription: AdjRibSubscription,
-
     adjRibOutManager: ?AdjRibManager,
-    adjRibOutSubscription: AdjRibSubscription,
 
-    pub fn init(parent: *Peer, alloc: Allocator, targetRib: *RibManager) !Self {
+    pub fn init(parent: *Peer, alloc: Allocator) !Self {
         return .{
             .state = .IDLE,
             .parent = parent,
@@ -221,15 +215,8 @@ pub const Session = struct {
             .messageEncoder = .init(alloc),
             .allocator = alloc,
             .eventQueue = try .init(alloc, .{ .count = 1, .backlog = 1 }),
-            .targetRib = targetRib,
-            .mainRibSubscription = .{
-                .peerId = .{.V4 = parent.sessionAddresses.peerAddress},
-                .callback = Self.onMainRibOutUpdate,
-            },
             .adjRibInManager = null,
-            .adjRibInSubscription = .{ .callback = Self.onAdjRibInUpdate },
             .adjRibOutManager = null,
-            .adjRibOutSubscription = .{ .callback = Self.onAdjRibOutUpdate }
         };
     }
 
@@ -249,39 +236,13 @@ pub const Session = struct {
         self.eventQueue.deinit(self.allocator);
     }
 
-    pub fn onAdjRibInUpdate(sub: *AdjRibSubscription, update: *const AdjRibOperation) void {
-        const self: *Self = @fieldParentPtr("adjRibInSubscription", sub);
-
-        _ = self;
-        _ = update;
-        // TODO: send update to mainRib
-    }
-
-    pub fn onMainRibOutUpdate(sub: *OutAdjRibCallback, update: *const MainRibOperation) void {
-        const self: *Self = @fieldParentPtr("mainRibSubscription", sub);
-
-        _ = self;
-        _ = update;
-    }
-
-    pub fn onAdjRibOutUpdate(sub: *AdjRibSubscription, update: *const AdjRibOperation) void {
-        const self: *Self = @fieldParentPtr("adjRibOutSubscription", sub);
-
-        _ = self;
-        _ = update;
-        // TODO: send update to peer
-    }
-
     pub fn initBgpResourcesFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) !void {
         self.info = .{
             .peerId = msg.peerRouterId,
             .peerAsn = msg.asNumber,
         };
-        self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibOutSubscription, self.mainRib.threadPool);
-
-        try self.mainRib.addUpdatesCallback(&self.mainRibSubscription);
-
-        self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress }, &self.adjRibInSubscription, self.mainRib.threadPool);
+        self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress });
+        self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress });
     }
 
     pub fn releaseBgpResources(self: *Self) void {
@@ -291,8 +252,6 @@ pub const Session = struct {
             adjRibInManager.deinit();
             self.adjRibInManager = null;
         }
-
-        self.mainRib.removeUpdatesCallback(&self.mainRibSubscription);
 
         if (self.adjRibOutManager) |*adjRibOutManager| {
             adjRibOutManager.deinit();
@@ -442,15 +401,13 @@ pub const Session = struct {
         }
     }
 
-    pub fn processUpdateMsg(self: Self, msg: messageModel.UpdateMessage) !void {
-        const advertiser = ip.IpAddress{ .V4 = self.parent.sessionAddresses.peerAddress };
-
+    pub fn processUpdateMsg(self: *Self, msg: messageModel.UpdateMessage) !void {
         for (msg.withdrawnRoutes) |route| {
-            try self.mainRib.removePath(route, advertiser);
+            self.adjRibInManager.?.removePath(route);
         }
 
         for (msg.advertisedRoutes) |route| {
-            try self.mainRib.setPath(route, advertiser, msg.pathAttributes);
+            try self.adjRibInManager.?.setPath(route, msg.pathAttributes);
         }
     }
 };
@@ -500,7 +457,7 @@ pub const Peer = struct {
 
     mutex: std.Thread.Mutex,
 
-    pub fn init(cfg: PeerConfig, self: *Self, alloc: std.mem.Allocator, targetRib: *RibManager) !Self {
+    pub fn init(cfg: PeerConfig, self: *Self, alloc: std.mem.Allocator) !Self {
         return .{
             .localAsn = cfg.localAsn,
             .holdTime = cfg.holdTime,
@@ -510,7 +467,7 @@ pub const Peer = struct {
             .delayOpen_ms = cfg.delayOpen_ms,
             .sessionAddresses = cfg.sessionAddresses,
             .sessionPorts = cfg.sessionPorts,
-            .session = try .init(self, alloc, targetRib),
+            .session = try .init(self, alloc),
             .mutex = .{},
         };
     }

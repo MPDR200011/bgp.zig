@@ -49,34 +49,25 @@ pub const AdjRibManager = struct {
     const Self = @This();
 
     allocator: Allocator,
-
     ribMutex: std.Thread.Mutex,
 
     neighbor: ip.IpAddress,
+
     adjRib: AdjRib,
 
-    threadPool: *xev.ThreadPool,
-
-    subscription: *Subscription,
-
-    taskCounter: TaskCounter,
-
-    pub fn init(alloc: Allocator, neighbor: ip.IpAddress, subscription: *Subscription, threadPool: *xev.ThreadPool) !Self {
+    pub fn init(alloc: Allocator, neighbor: ip.IpAddress) !Self {
         return Self{
             .allocator = alloc,
             .ribMutex = .{},
             .neighbor = neighbor,
             .adjRib = .init(neighbor, alloc),
-            .subscription = subscription,
-            .threadPool = threadPool,
-            .taskCounter = .default,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.taskCounter.waitForDrainAndShutdown();
+        self.ribMutex.lock();
+        defer self.ribMutex.unlock();
 
-        self.clearAdjRib();
         self.adjRib.deinit();
     }
 
@@ -87,62 +78,17 @@ pub const AdjRibManager = struct {
         }
     }
 
-    fn threadPoolCallback(task: *xev.ThreadPool.Task) void {
-        const adjRibTask: *AdjRibTask = @fieldParentPtr("task", task);
-        const self = adjRibTask.self;
-
-        defer self.taskCounter.decrementTasks();
-
-        {
-            adjRibTask.mutex.lock();
-            defer adjRibTask.mutex.unlock();
-
-            switch (adjRibTask.operation) {
-                .set => |addParams| {
-                    @call(.auto, AdjRib.setPath, addParams) catch |err| {
-                        std.debug.print("Fatal: Error while adding path to Rib: {}", .{err});
-                        std.process.abort();
-                    };
-                },
-                .remove => |removeParams| {
-                    @call(.auto, AdjRib.removePath, removeParams);
-                }
-            }
-        }
-
-        @call(.auto, adjRibTask.subscription.callback, .{adjRibTask.subscription, &adjRibTask.operation});
-
-        adjRibTask.operation.deinit();
-        adjRibTask.allocator.destroy(adjRibTask);
-    }
-
-    fn scheduleTask(self: *Self, task: *AdjRibTask) void {
-        self.taskCounter.incrementTasks();
-
-        self.threadPool.schedule(xev.ThreadPool.Batch.from(&task.task));
-    }
-
     pub fn setPath(self: *Self, route: Route, attrs: PathAttributes) !void {
-        const task = self.allocator.create(AdjRibTask);
-        task.* = .{
-            .self = self,
-            .operation = .{ .set = .{&self.rib, route, try attrs.clone(attrs.allocator)} },
-            .subscription = self.subscription,
-            .task = .{ .callback = Self.threadPoolCallback }
-        };
+        self.ribMutex.lock();
+        defer self.ribMutex.unlock();
 
-        self.scheduleTask(task);
+        try self.adjRib.setPath(route, attrs);
     }
 
-    pub fn removePath(self: *Self, route: Route) !void {
-        const task = self.allocator.create(AdjRibTask);
-        task.* = .{
-            .self = self,
-            .operation = .{ .set = .{&self.rib, route} },
-            .subscription = self.subscription,
-            .task = .{ .callback = Self.threadPoolCallback }
-        };
+    pub fn removePath(self: *Self, route: Route) void {
+        self.ribMutex.lock();
+        defer self.ribMutex.unlock();
 
-        self.scheduleTask(task);
+        self.adjRib.removePath(route);
     }
 };

@@ -60,137 +60,32 @@ pub const RibManager = struct {
     ribMutex: std.Thread.Mutex,
     rib: Rib,
 
-    threadPool: *xev.ThreadPool,
-
-    cbMutex: std.Thread.Mutex,
-    outAdjRibCbList: OutAdjRibCbList,
-
-    taskCounter: TaskCounter,
-
-    pub fn init(alloc: Allocator, threadPool: *xev.ThreadPool) !Self {
+    pub fn init(alloc: Allocator) !Self {
         return Self{
             .allocator = alloc,
             .ribMutex = .{},
             .rib = .init(alloc),
-            .threadPool = threadPool,
-            .cbMutex = .{},
-            .outAdjRibCbList = .{},
-            .taskCounter = .default,
         };
     }
 
     pub fn deinit(self: *Self) Self {
-        self.taskCounter.waitForDrainAndShutdown();
+        self.ribMutex.lock();
+        defer self.ribMutex.unlock();
 
         self.rib.deinit();
-
-        // Main rib manager is only deinited during process shutdown.
-        // At that point, peer sessions have already gone through the shutdown
-        // process, during which time the subscription is deleted.
-        std.debug.assert(self.outAdjRibCbList.len() == 0);
-    }
-
-    pub fn addUpdatesCallback(self: *Self, callback: *OutAdjRibCallback) Allocator.Error!void {
-        self.cbMutex.lock();
-        defer self.cbMutex.unlock();
-
-        const node: CallbackHandle = try self.allocator.create(OutAdjRibCbList.Node);
-        node.data = callback;
-
-        self.outAdjRibCbList.append(node);
-
-        callback.callbackHandle = node;
-    }
-
-    pub fn removeUpdatesCallback(self: *Self, callback: *OutAdjRibCallback) void {
-        self.cbMutex.lock();
-        defer self.cbMutex.unlock();
-
-        std.debug.assert(callback.callbackHandle != null);
-
-        self.outAdjRibCbList.remove(callback.callbackHandle.?);
-
-        self.allocator.destroy(callback.callbackHandle.?);
-        callback.callbackHandle = null;
-    }
-
-    fn threadPoolCallback(task: *xev.ThreadPool.Task) void {
-        const ribTask: *RibTask = @fieldParentPtr("task", task);
-        const self = ribTask.self;
-
-        defer self.taskCounter.decrementTasks();
-
-        {
-            self.ribMutex.lock();
-            defer self.ribMutex.unlock();
-
-            switch (ribTask.operation) {
-                .set => |addParams| {
-                    @call(.always_inline, Rib.setPath, addParams) catch |err| {
-                        std.debug.print("Fatal: Error while adding path to Rib: {}", .{err});
-                        std.process.abort();
-                    };
-                },
-                .remove => |removeParams| {
-                    // FIXME this result is important for updates
-                    _ = @call(.always_inline, Rib.removePath, removeParams);
-                }
-            }
-        }
-
-        {
-            self.cbMutex.lock();
-            defer self.cbMutex.unlock();
-
-            var it = self.outAdjRibCbList.first;
-            while (it) |subNode| : (it = subNode.next) {
-                const sub = subNode.data;
-                const peerAddress: ip.IpAddress = peerId: switch (ribTask.operation) {
-                    .set => |addParams| {
-                        break :peerId addParams[2];
-                    },
-                    .remove => |removeParams| {
-                        break :peerId removeParams[2];
-                    }
-                };
-
-                if (peerAddress.equals(sub.peerId)) {
-                    // Don't advertise stuff back to the peer we learned it from
-                    continue;
-                }
-
-                @call(.auto, subNode.data.callback, .{sub, &ribTask.operation});
-            }
-        }
-
-        ribTask.operation.deinit();
-        self.allocator.destroy(ribTask);
-    }
-
-    fn scheduleTask(self: *Self, task: *RibTask) void {
-        self.taskCounter.incrementTasks();
-        self.threadPool.schedule(xev.ThreadPool.Batch.from(&task.task));
     }
 
     pub fn setPath(self: *Self, route: Route, advertiserAddress: ip.IpAddress, attrs: PathAttributes) !void {
-        const task = try self.allocator.create(RibTask);
-        task.* = .{
-            .self = self,
-            .operation = .{ .set = .{&self.rib, route, advertiserAddress, try attrs.clone(attrs.allocator)} },
-            .task = .{ .callback = Self.threadPoolCallback }
-        };
+        self.ribMutex.lock();
+        defer self.ribMutex.unlock();
 
-        self.scheduleTask(task);
+        self.rib.setPath(route, advertiserAddress, attrs);
     }
 
-    pub fn removePath(self: *Self, route: Route, advertiserAddress: ip.IpAddress) !void {
-        const task = try self.allocator.create(RibTask);
-        task.* = .{
-            .self = self,
-            .operation = .{ .remove = .{&self.rib, route, advertiserAddress} },
-            .task = .{ .callback = Self.threadPoolCallback }
-        };
+    pub fn removePath(self: *Self, route: Route, advertiserAddress: ip.IpAddress) !bool {
+        self.ribMutex.lock();
+        defer self.ribMutex.unlock();
 
-        self.scheduleTask(task);
+        return self.rib.removePath(route, advertiserAddress);
     }
 };
