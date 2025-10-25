@@ -240,7 +240,7 @@ pub fn main() !void {
             const peer = try gpa.create(Peer);
             peer.* = session.Peer.init(.{
                 .localAsn = processConfig.localConfig.asn,
-                .holdTime = 300,
+                .holdTime = 15,
                 .localRouterId = processConfig.localConfig.routerId,
                 .peeringMode = peeringMode,
                 .delayOpen = delayOpenAmount > 0,
