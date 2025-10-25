@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const Barrier = @import("barrier.zig");
+
 const Thread = std.Thread;
 const Allocator = std.mem.Allocator;
 
@@ -19,8 +21,6 @@ pub fn AccumulatingDebouncedTask(comptime Args: anytype) type {
 
     return struct {
         const Self = @This();
-        const WAIT_VALUE: u8 = 1;
-        const RUN_VALUE: u8 = 2;
 
         queue: CallQueue,
         task: Task,
@@ -28,7 +28,7 @@ pub fn AccumulatingDebouncedTask(comptime Args: anytype) type {
         thread: Thread,
 
         mutex: Thread.Mutex,
-        startFutexValue: std.atomic.Value(u32),
+        workerBarrier: Barrier,
 
         waitCondition: std.Thread.Condition,
 
@@ -53,7 +53,7 @@ pub fn AccumulatingDebouncedTask(comptime Args: anytype) type {
                 .task = task,
                 .thread = try std.Thread.spawn(.{}, Self.worker, .{self}),
                 .mutex = .{},
-                .startFutexValue = .init(Self.WAIT_VALUE),
+                .workerBarrier = .init(true),
                 .waitCondition = .{},
                 .debounceDelay_ms = opts.debounceDelay_ms,
                 .maxTotalDebounceDelay_ms = opts.maxTotalDebounceDelay_ms orelse (opts.debounceDelay_ms * 5),
@@ -69,8 +69,7 @@ pub fn AccumulatingDebouncedTask(comptime Args: anytype) type {
             {
                 self.mutex.lock();
                 self.running = false;
-                self.startFutexValue.store(Self.RUN_VALUE, .monotonic);
-                std.Thread.Futex.wake(&self.startFutexValue, 1);
+                self.workerBarrier.open();
                 self.mutex.unlock();
 
                 self.thread.join();
@@ -87,15 +86,14 @@ pub fn AccumulatingDebouncedTask(comptime Args: anytype) type {
             try self.queue.append(args);
 
             self.shouldWait = true;
-            self.startFutexValue.store(Self.RUN_VALUE, .monotonic);
-            std.Thread.Futex.wake(&self.startFutexValue, 1);
+            self.workerBarrier.open();
 
             self.waitCondition.signal();
         }
 
         fn worker(self: *Self) void {
             while (self.running) {
-                std.Thread.Futex.wait(&self.startFutexValue, Self.WAIT_VALUE);
+                self.workerBarrier.wait();
 
                 self.mutex.lock();
                 defer self.mutex.unlock();
@@ -120,7 +118,7 @@ pub fn AccumulatingDebouncedTask(comptime Args: anytype) type {
 
                 @call(.auto, self.task, .{self.queue.items});
 
-                self.startFutexValue.store(Self.WAIT_VALUE, .unordered);
+                self.workerBarrier.close();
 
                 self.queue.clearRetainingCapacity();
                 self.shouldWait = false;
