@@ -76,8 +76,6 @@ pub fn Timer(Context: type) type {
                 self.executorRunning = true;
                 self.shouldRun = true;
                 self.finishedRunning = false;
-
-                std.log.debug("Scheduling timer with {} ms delay", .{delay_ms});
             }
 
             self.executorThread = try std.Thread.spawn(.{}, Self.executorFunction, .{self});

@@ -95,9 +95,7 @@ const AcceptHandlerError = error{
     UnexpectedMessageType,
 };
 
-pub fn acceptHandler(ctx: AcceptContext) !void {
-    errdefer ctx.conn.stream.close();
-
+fn wrapper(ctx: AcceptContext) !void {
     const peerAddr = ctx.conn.address;
     const peerAddrStr = try getAddrString(peerAddr, ctx.allocator);
     var peerSepIdx: usize = 0;
@@ -139,6 +137,7 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
         switch (peer.session.state) {
             .IDLE => {
                 // IDLE sessions should not accept connections as they are not looking for one
+                std.log.info("Session is idle and not accepting connections", .{});
                 ctx.conn.stream.close();
                 return;
             },
@@ -152,6 +151,14 @@ pub fn acceptHandler(ctx: AcceptContext) !void {
 
         // From here on, we need to spin up a parallel FSM and track this connection until collision happens
     }
+}
+
+pub fn acceptHandler(ctx: AcceptContext) void {
+    errdefer ctx.conn.stream.close();
+
+    wrapper(ctx) catch |err| {
+        std.log.err("Error handling incoming connection: {}", .{err});
+    };
 }
 
 pub fn main() !void {

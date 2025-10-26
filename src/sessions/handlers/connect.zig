@@ -51,6 +51,8 @@ fn handleTcpSuccessful(session: *Session) !PostHandlerAction {
 }
 
 fn handleTcpFailed(session: *Session) !PostHandlerAction {
+    session.closeConnection();
+
     if (session.delayOpenTimer.isActive()) {
         session.delayOpenTimer.cancel();
         try session.connectionRetryTimer.reschedule();
@@ -58,8 +60,6 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
         return .transition(.ACTIVE);
     } else {
         session.connectionRetryTimer.cancel();
-
-        session.closeConnection();
 
         return .transition(.IDLE);
     }

@@ -43,6 +43,7 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
     session.closeConnection();
 
     try session.connectionRetryTimer.reschedule();
+    session.holdTimer.cancel();
 
     return .transition(.ACTIVE);
 }

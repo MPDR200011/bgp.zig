@@ -378,7 +378,7 @@ pub const Session = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        std.log.debug("Handling event: {s}", .{@tagName(event)});
+        std.log.debug(">>>>>>>>Handling event: {s}", .{@tagName(event)});
 
         const nextAction = self.invokeHandler(event) catch |err| {
             std.log.err("Failed to handle event {s} with error: {}", .{ @tagName(event), err });
@@ -390,7 +390,7 @@ pub const Session = struct {
             .Keep => return,
         }
 
-        std.log.debug("Finished handling event: {s}", .{@tagName(event)});
+        std.log.debug("<<<<<<<<Finished handling event: {s}", .{@tagName(event)});
 
         switch (event) {
             .OpenReceived => |msg| {self.messageReader.deInitMessage(.{ .OPEN = msg });},

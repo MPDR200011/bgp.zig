@@ -56,6 +56,8 @@ fn handleKeepAliveTimerExpires(session: *Session) !PostHandlerAction {
 
 fn handleTcpFailed(session: *Session) !PostHandlerAction {
     session.connectionRetryTimer.cancel();
+    session.keepAliveTimer.cancel();
+    session.holdTimer.cancel();
 
     // TODO delete all routes
 
