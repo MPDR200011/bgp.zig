@@ -12,13 +12,14 @@ pub fn Timer(Context: type) type {
 
         delay_ms: u64,
 
-        mutex: std.Thread.Mutex,
+        runMutex: std.Thread.Mutex,
         waitCondition: std.Thread.Condition,
 
         shouldRun: bool,
         finishedRunning: bool,
         executorRunning: bool,
 
+        threadMutex: std.Thread.Mutex,
         executorThread: ?std.Thread = null,
 
         pub fn init(cb: Callback, ctx: Context) Self {
@@ -29,8 +30,9 @@ pub fn Timer(Context: type) type {
                 .shouldRun = true,
                 .finishedRunning = false,
                 .executorRunning = false,
-                .mutex = .{},
+                .runMutex = .{},
                 .waitCondition = .{},
+                .threadMutex = .{},
             };
         }
 
@@ -39,10 +41,10 @@ pub fn Timer(Context: type) type {
         }
 
         fn executorFunction(self: *Self) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            self.runMutex.lock();
+            defer self.runMutex.unlock();
 
-            self.waitCondition.timedWait(&self.mutex, self.delay_ms * std.time.ns_per_ms) catch |err| {
+            self.waitCondition.timedWait(&self.runMutex, self.delay_ms * std.time.ns_per_ms) catch |err| {
                 std.debug.assert(err == error.Timeout);
             };
 
@@ -60,8 +62,8 @@ pub fn Timer(Context: type) type {
 
         pub fn start(self: *Self, delay_ms: u64) !void {
             {
-                self.mutex.lock();
-                defer self.mutex.unlock();
+                self.runMutex.lock();
+                defer self.runMutex.unlock();
 
                 if (delay_ms == 0) {
                     return TaskErrors.InvalidDelay;
@@ -73,36 +75,48 @@ pub fn Timer(Context: type) type {
                     return TaskErrors.AlreadyRunning;
                 }
 
+                // If this has previously run, we want to join that thread
+                // before replacing it, otherwise we leak threads
+                self.join();
+
                 self.executorRunning = true;
                 self.shouldRun = true;
                 self.finishedRunning = false;
             }
 
-            self.executorThread = try std.Thread.spawn(.{}, Self.executorFunction, .{self});
+            {
+                self.threadMutex.lock();
+                defer self.threadMutex.unlock();
+                self.executorThread = try std.Thread.spawn(.{}, Self.executorFunction, .{self});
+            }
         }
 
         pub fn cancel(self: *Self) void {
+            defer self.join();
+
             {
-                self.mutex.lock();
-                defer self.mutex.unlock();
+                self.runMutex.lock();
+                defer self.runMutex.unlock();
 
                 if (self.finishedRunning or !self.executorRunning) {
                     return;
                 }
 
                 self.shouldRun = false;
-                self.waitCondition.signal();
             }
 
-            if (self.executorThread) |t| {
-                t.join();
-            }
+            self.waitCondition.signal();
         }
 
         pub fn join(self: *Self) void {
+            self.threadMutex.lock();
+            defer self.threadMutex.unlock();
+
             if (self.executorThread) |t| {
                 t.join();
             }
+
+            self.executorThread = null;
         }
 
         pub fn reschedule(self: *Self) !void {
