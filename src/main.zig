@@ -77,7 +77,7 @@ pub fn main() !void {
     defer if (is_debug) {
         switch (debug_allocator.deinit()) {
             .leak => std.debug.print("UNFREE'D MEMORY DETECTED!!!! CHECK YOUR ALLOCS!!! >:(\n", .{}),
-            else => std.debug.print("No memory leaks detected :)\n", .{}),
+            .ok => std.debug.print("No memory leaks detected :)\n", .{}),
         }
     };
 
@@ -108,13 +108,9 @@ pub fn main() !void {
     const processConfig = managedProcessConfig.value;
     const localPort = processConfig.localConfig.localPort orelse 179;
 
-    // var ribThreadPool = xev.ThreadPool.init(.{
-    //     .max_threads = @intCast(std.Thread.getCpuCount() catch 4)
-    // });
-    // defer ribThreadPool.shutdown();
-    // defer ribThreadPool.deinit();
-
     _ = try ribManager.RibManager.init(gpa);
+
+    std.log.info("Initializing peer map", .{});
 
     var peerMap = PeerMap.init(gpa);
     defer {
@@ -126,49 +122,52 @@ pub fn main() !void {
         peerMap.deinit();
     }
 
-    {
-        for (processConfig.peers) |peerConfig| {
-            const peeringMode: session.Mode = modeBlock: {
-                if (std.mem.eql(u8, peerConfig.peeringMode, "PASSIVE")) {
-                    break :modeBlock .PASSIVE;
-                } else if (std.mem.eql(u8, peerConfig.peeringMode, "ACTIVE")) {
-                    break :modeBlock .ACTIVE;
-                } else  {
-                    std.log.err("Invalid Peering Mode: {s}", .{peerConfig.peeringMode});
-                    std.process.abort();
-                }
-            };
+    for (processConfig.peers) |peerConfig| {
+        const peeringMode: session.Mode = modeBlock: {
+            if (std.mem.eql(u8, peerConfig.peeringMode, "PASSIVE")) {
+                break :modeBlock .PASSIVE;
+            } else if (std.mem.eql(u8, peerConfig.peeringMode, "ACTIVE")) {
+                break :modeBlock .ACTIVE;
+            } else  {
+                std.log.err("Invalid Peering Mode: {s}", .{peerConfig.peeringMode});
+                std.process.abort();
+            }
+        };
 
-            const delayOpenAmount = peerConfig.delayOpen_s orelse 0;
+        const delayOpenAmount = peerConfig.delayOpen_s orelse 0;
 
-            const peer = try gpa.create(Peer);
-            peer.* = session.Peer.init(.{
-                .localAsn = processConfig.localConfig.asn,
-                .holdTime = 15,
-                .localRouterId = processConfig.localConfig.routerId,
-                .peeringMode = peeringMode,
-                .delayOpen = delayOpenAmount > 0,
-                .delayOpen_ms = delayOpenAmount * std.time.ms_per_s,
-                .sessionAddresses = .{
-                    .localAddress = try .parse(peerConfig.localAddress),
-                    .peerAddress = try .parse(peerConfig.peerAddress),
-                },
-                .sessionPorts = .{
-                    .localPort = localPort,
-                    .peerPort = peerConfig.peerPort orelse 179,
-                },
-                }, peer, gpa) catch |err| {
-                std.log.err("Failed to initialize peer memory: {}", .{err});
-                return err;
-            };
+        const peer = try gpa.create(Peer);
+        peer.* = session.Peer.init(.{
+            .localAsn = processConfig.localConfig.asn,
+            .holdTime = 15,
+            .localRouterId = processConfig.localConfig.routerId,
+            .peeringMode = peeringMode,
+            .delayOpen = delayOpenAmount > 0,
+            .delayOpen_ms = delayOpenAmount * std.time.ms_per_s,
+            .sessionAddresses = .{
+                .localAddress = try .parse(peerConfig.localAddress),
+                .peerAddress = try .parse(peerConfig.peerAddress),
+            },
+            .sessionPorts = .{
+                .localPort = localPort,
+                .peerPort = peerConfig.peerPort orelse 179,
+            },
+            }, peer, gpa) catch |err| {
+            std.log.err("Failed to initialize peer memory: {}", .{err});
+            return err;
+        };
 
-            try peerMap.put(peer.sessionAddresses, peer);
-        }
+        try peerMap.put(peer.sessionAddresses, peer);
     }
+
+    std.log.info("Starting peer state machines", .{});
 
     var it = peerMap.valueIterator();
     while (it.next()) |peer| {
-        try peer.*.session.submitEvent(.{ .Start = {} });
+        peer.*.session.submitEvent(.{ .Start = {} }) catch |err| {
+            std.log.err("Error submitting start event: {}\n", .{err});
+            return err;
+        };
     }
 
 
