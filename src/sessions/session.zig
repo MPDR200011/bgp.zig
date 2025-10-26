@@ -221,11 +221,12 @@ pub const Session = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.releaseBgpResources();
-        self.closeConnection();
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        self.shutdown();
 
         self.messageReader.deinit();
-
         self.messageEncoder.deinit();
 
         self.connectionRetryTimer.deinit();
@@ -279,8 +280,14 @@ pub const Session = struct {
         }
     }
 
+    pub fn shutdown(self: *Self) void {
+        self.closeConnection();
+        self.cancelAllTimers();
+        self.releaseBgpResources();
+    }
+
     pub fn shutdownFatal(self: *Self) void {
-        std.log.info("Initiated fatal shutdown!", .{});
+        std.log.err("Initiated fatal shutdown!", .{});
 
         switch (self.state) {
             .OPEN_SENT, .OPEN_CONFIRM, .ESTABLISHED => {
@@ -292,13 +299,11 @@ pub const Session = struct {
             .IDLE, .CONNECT, .ACTIVE => {},
         }
 
-        self.closeConnection();
-        self.killAllTimers();
-        self.releaseBgpResources();
+        self.shutdown();
         self.connectionRetryCount += 1;
     }
 
-    fn killAllTimers(self: *Self) void {
+    fn cancelAllTimers(self: *Self) void {
         self.connectionRetryTimer.cancel();
         self.holdTimer.cancel();
         self.keepAliveTimer.cancel();
@@ -330,8 +335,7 @@ pub const Session = struct {
         self.connectionState = .Open;
 
         const startContext: StartConnContext = .{ .session = self, .allocator = self.allocator };
-        const t = try std.Thread.spawn(.{}, connectionStartThread, .{startContext});
-        t.detach();
+        self.peerConnectionThread = try std.Thread.spawn(.{}, connectionStartThread, .{startContext});
     }
 
     pub fn closeConnection(self: *Self) void {
