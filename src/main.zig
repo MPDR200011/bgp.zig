@@ -28,6 +28,8 @@ const Peer = session.Peer;
 
 const ribManager = @import("rib/main_rib_manager.zig");
 
+const Barrier = @import("utils/barrier.zig");
+
 pub const std_options: std.Options = .{
     // Set the log level to info
     .log_level = .debug,
@@ -35,6 +37,8 @@ pub const std_options: std.Options = .{
     // Define logFn to override the std implementation
     .logFn = myLogFn,
 };
+
+pub var shutdownBarrier: Barrier = .init(true);
 
 pub fn myLogFn(
     comptime level: std.log.Level,
@@ -170,7 +174,26 @@ pub fn main() !void {
         };
     }
 
+    std.log.debug("Registering signals", .{});
 
+    const sigHandler = std.posix.Sigaction{
+        .handler = .{ 
+            .handler = struct { 
+                pub fn handler(sig: i32) callconv(.c) void {
+                    std.log.info("Received signal {}", .{sig});
+                    shutdownBarrier.open();
+                }
+            }.handler
+        },
+        .mask = std.posix.empty_sigset,
+        .flags = 0,
+    };
+
+    std.posix.sigaction(std.posix.SIG.INT, &sigHandler, null);
+    std.posix.sigaction(std.posix.SIG.TERM, &sigHandler, null);
+    std.posix.sigaction(std.posix.SIG.ABRT, &sigHandler, null);
+
+    std.log.debug("Registered signals", .{});
 
     var server = Server.init(gpa, localPort, &processConfig) catch |err| {
         std.log.err("Error initializing server {}", .{err});
@@ -181,9 +204,21 @@ pub fn main() !void {
         return err;
     };
 
+    std.log.info("Waiting for shutdown signal", .{});
+    shutdownBarrier.wait();
+    std.log.info("Shutdown initiated", .{});
 
+    // Shutdown checklist
+    // 1 - Stop accepting more connections
+    std.log.info("Shutting down server", .{});
+    server.stop() catch |err| {
+        std.log.err("Error shutting down server {}", .{err});
+        std.process.abort();
+    };
     serverThread.join();
+    std.log.info("Server shutdown", .{});
 
+    // 2 - Shutdown all sessions
 }
 
 test {
