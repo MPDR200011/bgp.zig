@@ -4,8 +4,7 @@ const std = @import("std");
 
 const Thread = std.Thread;
 
-pub const Barrier = @This();
-const Self = Barrier;
+const Self = @This();
 
 const CLOSED_VALUE: u8 = 1;
 const OPEN_VALUE: u8 = 2;
@@ -21,10 +20,10 @@ pub fn init(closed: bool) Self {
 }
 
 // Check if the barrier is closed and block if it is
-pub fn wait(self: *const Self) void {
-    self.waitingCount.fetchAdd(1, .monotonic);
+pub fn wait(self: *Self) void {
+    _ = self.waitingCount.fetchAdd(1, .monotonic);
     std.Thread.Futex.wait(&self.futex, CLOSED_VALUE);
-    self.waitingCount.fetchSub(1, .monotonic);
+    _ = self.waitingCount.fetchSub(1, .monotonic);
 }
 
 // Check if the barrier is closed and block if it is. Returns error if blocked 
