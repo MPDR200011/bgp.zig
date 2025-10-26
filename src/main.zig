@@ -20,6 +20,8 @@ const headerReader = @import("messaging/parsing/header.zig");
 const openReader = @import("messaging/parsing/open.zig");
 const bgpEncoding = @import("messaging/encoding/encoder.zig");
 
+const PeerMap = @import("peer_map.zig").PeerMap;
+
 const v4PeerSessionAddresses = session.v4PeerSessionAddresses;
 const Peer = session.Peer;
 
@@ -53,21 +55,6 @@ pub fn myLogFn(
     const stderr = std.io.getStdErr().writer();
     nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
 }
-
-pub const PeerMapCtx = struct {
-    const Self = @This();
-
-    pub fn hash(_: Self, s: v4PeerSessionAddresses) u64 {
-        const hashFn = std.hash_map.getAutoHashFn(ip.IpV4Address, void);
-        return hashFn({}, s.localAddress) ^ hashFn({}, s.peerAddress);
-    }
-
-    pub fn eql(_: Self, s1: v4PeerSessionAddresses, s2: v4PeerSessionAddresses) bool {
-        return s1.localAddress.equals(s2.localAddress) and s1.peerAddress.equals(s2.peerAddress);
-    }
-};
-
-pub const PeerMap = std.HashMap(v4PeerSessionAddresses, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
 
 pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]const u8 {
     var addressBuffer: [64]u8 = undefined;
