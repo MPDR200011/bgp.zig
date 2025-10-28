@@ -28,7 +28,7 @@
 
     // Tracks the earliest Zig version that the package considers to be a
     // supported use case.
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.1",
 
     // This field is optional.
     // Each dependency must either provide a `url` and `hash`, or a `path`.
@@ -37,20 +37,20 @@
     // internet connectivity.
     .dependencies = .{
         .clap = .{
-            .url = "git+https://github.com/Hejsil/zig-clap#a4e784da8399c51d5eeb5783e6a485b960d5c1f9",
-            .hash = "clap-0.10.0-oBajB8fkAQB0JvsrWLar4YZrseSZ9irFxHB7Hvy_bvxb",
+            .url = "git+https://github.com/Hejsil/zig-clap#b7e3348ed60f99ba32c75aa707ff7c87adc31b36",
+            .hash = "clap-0.11.0-oBajB-TnAQC7yPLnZRT5WzHZ_4Ly4dX2OILskli74b9H",
         },
         .zul = .{
-            .url = "git+https://github.com/karlseguin/zul#007aa7c4ed77272416c8111f4ce403e86abd56d3",
-            .hash = "zul-0.0.0-1oDotyJMBwBli3UBm47WYeNZSMNni_DbkT-jTtDpowDW",
+            .url = "git+https://github.com/karlseguin/zul#e770047f208cf4538fcd9fc64550c84fd5492fc4",
+            .hash = "zul-0.0.0-1oDot9yRBwDA_ovd6GC1M_ViW3LarywMaGrH6vcuEjqv",
         },
         .ip_zig = .{
-            .url = "git+https://github.com/MPDR200011/ip.zig#73d5c56fc8a544c224b79a97a4bd982317608172",
-            .hash = "ip_zig-0.0.0-UpeXbd94AAC-R4JXZOEnvlweNOaI5_ezHm9BxHGqmpPp",
+            .url = "git+https://github.com/mpdr200011/ip.zig.git#efb704299de98eb0bfc50689f7b567f51b1b5f9a",
+            .hash = "ip_zig-0.0.0-UpeXbaZ1AAAKZzd22RmJ3PgKcoBy0Su_RVJ5rE5Z91Fa",
         },
         .libxev = .{
-            .url = "git+https://github.com/mitchellh/libxev.git#75a10d0fb374e8eb84948dcfc68d865e755e59c2",
-            .hash = "libxev-0.0.0-86vtcyMBEwA-UpcjfOICyI2GYG8o6MiRbinS1_8g1_rw",
+            .url = "git+https://github.com/mitchellh/libxev.git#9b6634b6229be5f2c8fb22db1f6f652bac5c5040",
+            .hash = "libxev-0.0.0-86vtc2MaEwCW3jbbEvhCl_Mx1_XgunToEOq2KWiuIH6t",
         },
     },
     .paths = .{
