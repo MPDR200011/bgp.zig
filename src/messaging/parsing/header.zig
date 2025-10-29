@@ -19,13 +19,9 @@ const BgpMessageType = enum(u8) {
 
 const BgpMessageHeader = struct { messageLength: u16, messageType: BgpMessageType };
 
-pub fn readHeader(r: anytype) !BgpMessageHeader {
+pub fn readHeader(r: *std.Io.Reader) !BgpMessageHeader {
     var header_buffer: [consts.HEADER_LENGTH]u8 = undefined;
-    const read_bytes = try r.readAll(&header_buffer);
-
-    if (read_bytes != consts.HEADER_LENGTH) {
-        return error.EndOfStream;
-    }
+    try r.readSliceAll(&header_buffer);
 
     inline for (header_buffer[0..consts.MARKER_LENGTH]) |byte| {
         if (byte != 0xff) {

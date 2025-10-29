@@ -40,6 +40,20 @@ pub const std_options: std.Options = .{
 
 pub var shutdownBarrier: Barrier = .init(true);
 
+pub fn getStdErrWriter() std.Io.Writer {
+    const S = struct {
+        var stdErrBuffer: [1024]u8 = undefined;
+        var writer: ?std.fs.File.Writer = null;
+    };
+
+    if (S.writer) |w| {
+        return w.interface;
+    }
+
+    S.writer = std.fs.File.stderr().writer(&S.stdErrBuffer);
+    return S.writer.?.interface;
+}
+
 pub fn myLogFn(
     comptime level: std.log.Level,
     comptime scope: @Type(.enum_literal),
@@ -57,8 +71,9 @@ pub fn myLogFn(
     // Print the message to stderr, silently ignoring any errors
     std.debug.lockStdErr();
     defer std.debug.unlockStdErr();
-    const stderr = std.io.getStdErr().writer();
-    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
+    var stderr = getStdErrWriter();
+    stderr.print(prefix ++ format ++ "\n", args) catch return;
+    stderr.flush() catch return;
 }
 
 
@@ -96,7 +111,8 @@ pub fn main() !void {
         .allocator = gpa,
     }) catch |err| {
         // Report useful error and exit.
-        diag.report(std.io.getStdErr().writer(), err) catch {};
+        var stderr = getStdErrWriter();
+        diag.report(&stderr, err) catch {};
         return err;
     };
     defer res.deinit();
@@ -185,7 +201,7 @@ pub fn main() !void {
                 }
             }.handler
         },
-        .mask = std.posix.empty_sigset,
+        .mask = std.posix.sigemptyset(),
         .flags = 0,
     };
 

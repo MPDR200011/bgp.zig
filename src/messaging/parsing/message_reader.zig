@@ -32,7 +32,7 @@ pub const MessageReader = struct {
         }
     }
 
-    pub fn readMessage(self: *Self, stream: std.io.AnyReader) !model.BgpMessage {
+    pub fn readMessage(self: *Self, stream: *std.Io.Reader) !model.BgpMessage {
         const messageHeader = try headerReader.readHeader(stream);
 
         const messageLength = messageHeader.messageLength - consts.HEADER_LENGTH;

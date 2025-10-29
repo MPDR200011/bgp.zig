@@ -15,7 +15,7 @@ pub const Opts = struct {
 // Once task is triggered it is called with all buffered tasks as a list.
 // Each call further delays the execution, until a maximum time limit.
 pub fn AccumulatingDebouncedTask(comptime Args: anytype) type {
-    const CallQueue = std.ArrayList(Args);
+    const CallQueue = std.array_list.Managed(Args);
     const Task = *const fn ([]Args) void;
 
 

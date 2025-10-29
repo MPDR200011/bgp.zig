@@ -21,19 +21,19 @@ pub fn main() !void {
     std.debug.print("Invoking!\n", .{});
     try task.call(.{1, 2});
 
-    std.time.sleep(500 * std.time.ns_per_ms);
+    std.Thread.sleep(500 * std.time.ns_per_ms);
     std.debug.print("Invoking!\n", .{});
     try task.call(.{3, 4});
 
-    std.time.sleep(100 * std.time.ns_per_ms);
+    std.Thread.sleep(100 * std.time.ns_per_ms);
     std.debug.print("Invoking!\n", .{});
     try task.call(.{5, 6});
 
-    std.time.sleep(1100 * std.time.ns_per_ms);
+    std.Thread.sleep(1100 * std.time.ns_per_ms);
     std.debug.print("Invoking!\n", .{});
     try task.call(.{7 ,8});
 
-    std.time.sleep(150 * std.time.ns_per_ms);
+    std.Thread.sleep(150 * std.time.ns_per_ms);
     std.debug.print("Invoking!\n", .{});
     try task.call(.{9, 10});
 }

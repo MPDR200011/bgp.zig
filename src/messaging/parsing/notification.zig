@@ -42,19 +42,16 @@ pub fn getErrorKindFromMessageValue(errorCode: model.ErrorCode, msgValue: u8) !m
     }
 }
 
-pub fn readNotificationMessage(r: std.io.AnyReader, messageLength: u16, allocator: std.mem.Allocator) !model.NotificationMessage {
+pub fn readNotificationMessage(r: *std.Io.Reader, messageLength: u16, allocator: std.mem.Allocator) !model.NotificationMessage {
     const dataLength = messageLength - 2;
 
-    const errorCode: model.ErrorCode = @enumFromInt(try r.readInt(u8, .big));
-    const errorSubCode = try r.readInt(u8, .big);
+    const errorCode: model.ErrorCode = @enumFromInt(try r.takeInt(u8, .big));
+    const errorSubCode = try r.takeInt(u8, .big);
 
     const msg: model.NotificationMessage = try .init(errorCode, try getErrorKindFromMessageValue(errorCode, errorSubCode), dataLength, allocator);
     if (dataLength > 0) {
         std.debug.assert(msg.data != null);
-        const readBytes = try r.readAll(msg.data.?);
-        if (readBytes != dataLength) {
-            return NotificationParsingError.DataLengthMismatch;
-        }
+        try r.readSliceAll(msg.data.?);
     }
 
     return msg;

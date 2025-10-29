@@ -25,7 +25,7 @@ pub fn main() !void {
     std.debug.print("Starting the task!\n", .{});
     try task.start(10000);
 
-    std.time.sleep(5 * std.time.ns_per_s);
+    std.Thread.sleep(5 * std.time.ns_per_s);
     currentT = std.time.milliTimestamp();
     std.debug.print("{} - Cancelling and waiting for the task\n", .{currentT - start});
     task.cancel();
@@ -36,7 +36,7 @@ pub fn main() !void {
     std.debug.print("Starting the task!\n", .{});
     try task.start(10000);
 
-    std.time.sleep(5 * std.time.ns_per_s);
+    std.Thread.sleep(5 * std.time.ns_per_s);
     currentT = std.time.milliTimestamp();
     std.debug.print("{} - Rescheduling and waiting for the task\n", .{currentT - start});
     try task.reschedule();

@@ -10,11 +10,11 @@ const UpdateParsingError = error{ RoutesLengthInconsistent, AttributesLengthInco
 pub const UpdateMsgParser = @This();
 const Self = UpdateMsgParser;
 
-reader: std.io.AnyReader,
+reader: *std.Io.Reader,
 allocator: std.mem.Allocator,
 
-fn readIntoRoute(self: Self, route: *Route) !u16 {
-    const prefixLength = try self.reader.readInt(u8, .big);
+fn takeIntoRoute(self: Self, route: *Route) !u16 {
+    const prefixLength = try self.reader.takeInt(u8, .big);
     if (prefixLength > 32) {
         std.debug.print("Invalid prefix length: {}\n", .{prefixLength});
         return UpdateParsingError.InvalidPrefixLength;
@@ -28,7 +28,7 @@ fn readIntoRoute(self: Self, route: *Route) !u16 {
 
     var bitsToRead: i32 = @intCast(prefixLength);
     for (0..prefixByteLength) |i| {
-        const addressByte = try self.reader.readInt(u8, .big);
+        const addressByte = try self.reader.takeInt(u8, .big);
 
         const shiftAmount: u4 = 8 - @min(8, @as(u8, @intCast(bitsToRead)));
         const mask: u8 = @truncate(@as(u16, 0xff) << shiftAmount);
@@ -41,15 +41,15 @@ fn readIntoRoute(self: Self, route: *Route) !u16 {
     return (prefixByteLength + 1);
 }
 
-fn readRoutes(self: Self, routesLength: u16) !std.ArrayList(Route) {
-    var routesList = std.ArrayList(Route).init(self.allocator);
+fn readRoutes(self: Self, routesLength: u16) !std.array_list.Managed(Route) {
+    var routesList = std.array_list.Managed(Route).init(self.allocator);
     errdefer routesList.deinit();
 
     var bytesToRead: i32 = @intCast(routesLength);
     while (bytesToRead > 0) {
         const route = try routesList.addOne();
 
-        bytesToRead -= try self.readIntoRoute(route);
+        bytesToRead -= try self.takeIntoRoute(route);
     }
 
     if (bytesToRead != 0) {
@@ -62,15 +62,15 @@ fn readRoutes(self: Self, routesLength: u16) !std.ArrayList(Route) {
 fn readAttributes(self: Self, attributesLength: u16) !PathAttributes {
     var bytesToRead: i32 = @intCast(attributesLength);
     while (bytesToRead > 0) {
-        const attributeFlags = try self.reader.readInt(u8, .big);
-        const attributeType = try self.reader.readInt(u8, .big);
+        const attributeFlags = try self.reader.takeInt(u8, .big);
+        const attributeType = try self.reader.takeInt(u8, .big);
         _ = attributeType;
 
         const extendedLength: bool = (attributeFlags & (0b00010000)) > 0;
-        const attributeLength: u16 = if (extendedLength) try self.reader.readInt(u16, .big) else @intCast(try self.reader.readInt(u8, .big));
+        const attributeLength: u16 = if (extendedLength) try self.reader.takeInt(u16, .big) else @intCast(try self.reader.takeInt(u8, .big));
 
         // TODO parse attributes
-        try self.reader.skipBytes(attributeLength, .{});
+        try self.reader.discardAll(attributeLength);
 
         bytesToRead -= 1;
         bytesToRead -= if (extendedLength) 2 else 1;
@@ -85,11 +85,11 @@ fn readAttributes(self: Self, attributesLength: u16) !PathAttributes {
 }
 
 pub fn readUpdateMessage(self: Self, messageLength: u16) !model.UpdateMessage {
-    const withdrawnLength = try self.reader.readInt(u16, .big);
+    const withdrawnLength = try self.reader.takeInt(u16, .big);
     const withdrawnRoutes = try self.readRoutes(withdrawnLength);
     defer withdrawnRoutes.deinit();
 
-    const attributesLength = try self.reader.readInt(u16, .big);
+    const attributesLength = try self.reader.takeInt(u16, .big);
     const routeAttributes = try self.readAttributes(attributesLength);
     defer routeAttributes.deinit();
 
@@ -110,13 +110,13 @@ fn testReadIntoRoute(routeBuffer: []const u8, expectedReadBytes: u16, expectedRo
     };
 
     var actualRoute: Route = undefined;
-    const readBytes = try updateReader.readIntoRoute(&actualRoute);
+    const readBytes = try updateReader.takeIntoRoute(&actualRoute);
 
     try testing.expectEqual(expectedRoute, actualRoute);
     try testing.expectEqual(expectedReadBytes, readBytes);
 }
 
-test "readIntoRoute()" {
+test "takeIntoRoute()" {
     try testReadIntoRoute(&.{
         // Length
         32,

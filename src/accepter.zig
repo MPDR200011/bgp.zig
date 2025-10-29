@@ -18,14 +18,13 @@ processConfig: *const config.Config,
 
 pub fn getAddrString(address: net.Address, allocator: std.mem.Allocator) ![]const u8 {
     var addressBuffer: [64]u8 = undefined;
-    var addressStream = std.io.fixedBufferStream(&addressBuffer);
-    const addressWriter = addressStream.writer();
-    try address.format("", .{}, addressWriter);
+    var addressWriter = std.Io.Writer.fixed(&addressBuffer);
+    try address.format(&addressWriter);
 
-    const newBuffer: []u8 = try allocator.alloc(u8, addressStream.getPos() catch unreachable);
+    const newBuffer: []u8 = try allocator.alloc(u8, addressWriter.end);
     errdefer allocator.free(newBuffer);
 
-    std.mem.copyForwards(u8, newBuffer, addressStream.getWritten());
+    std.mem.copyForwards(u8, newBuffer, addressBuffer[0..addressWriter.end]);
     return newBuffer;
 }
 

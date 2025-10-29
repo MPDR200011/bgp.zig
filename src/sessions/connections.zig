@@ -18,7 +18,13 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
         std.log.info("There is no peer connection active right now.", .{});
         return;
     };
-    const clientReader = connection.reader().any();
+
+    const readerBuffer = ctx.allocator.alloc(u8, 1024) catch |err| {
+        std.log.err("Error allocation read buffer {}", .{err});
+        return;
+    };
+    defer ctx.allocator.free(readerBuffer);
+    var clientReader = connection.reader(readerBuffer);
 
     std.log.info("Connection handler thread started.", .{});
 
@@ -26,11 +32,11 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
     // possibly a "graceful" flag in the session struct?
     connection: while (true) {
         std.log.debug("Reading next message:", .{});
-        const message: model.BgpMessage = ctx.session.messageReader.readMessage(clientReader) catch |err| {
+        const message: model.BgpMessage = ctx.session.messageReader.readMessage(clientReader.interface()) catch |err| {
             std.log.err("Error reading next BGP message: {}", .{err});
 
             switch (err) {
-                error.ConnectionResetByPeer, error.EndOfStream => {
+                error.EndOfStream => {
                     ctx.session.parent.lock();
                     defer ctx.session.parent.unlock();
                     ctx.session.submitEvent(.{ .TcpConnectionFailed = {} }) catch {
