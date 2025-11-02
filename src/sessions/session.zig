@@ -273,7 +273,9 @@ pub const Session = struct {
             return error.ConnectionNotUp;
         };
 
-        try self.messageEncoder.writeMessage(msg, connection.writer().any());
+        const writeBuffer = try self.allocator.alloc(u8, 8000);
+        var connectionWriter = connection.writer(writeBuffer).interface;
+        try self.messageEncoder.writeMessage(msg, &connectionWriter);
 
         if (msg == .UPDATE) {
             try self.keepAliveTimer.reschedule();

@@ -13,7 +13,7 @@ fn writeParameters(parameters: []model.Parameter) !void {
     }
 }
 
-pub fn writeOpenBody(msg: model.OpenMessage, writer: std.io.AnyWriter) !void {
+pub fn writeOpenBody(msg: model.OpenMessage, writer: *std.Io.Writer) !void {
     try writer.writeInt(u8, msg.version, .big);
     try writer.writeInt(u16, msg.asNumber, .big);
     try writer.writeInt(u16, msg.holdTime, .big);

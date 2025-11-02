@@ -21,29 +21,20 @@ pub const MessageEncoder = struct {
 
     pub fn deinit(_: Self) void {}
 
-    pub fn writeMessage(self: *Self, msg: model.BgpMessage, messageWriter: std.io.AnyWriter) !void {
-        var bodyBuffer = std.ArrayList(u8).init(self.allocator);
-        // TODO implement message size limits
-        defer bodyBuffer.deinit();
-
-        const bodyWriter = bodyBuffer.writer().any();
-
+    pub fn writeMessage(_: *Self, msg: model.BgpMessage, messageWriter: *std.Io.Writer) !void {
         switch (msg) {
             .OPEN => |openMsg| {
-                try openMessage.writeOpenBody(openMsg, bodyWriter);
+                try openMessage.writeOpenBody(openMsg, messageWriter);
             },
             .NOTIFICATION => |notification| {
-                try notificationMessage.writeNotification(notification, bodyWriter);
+                try notificationMessage.writeNotification(notification, messageWriter);
             },
             .UPDATE => |update| {
-                try updateMessage.writeUpdateBody(update, bodyWriter);
+                try updateMessage.writeUpdateBody(update, messageWriter);
             },
             .KEEPALIVE => {},
         }
 
-        // FIXME: We might want to put an ultimate "write limit" to prevent 
-        // messages that are to large from being sent
-        try messageHeader.writeHeader(messageWriter, @intCast(bodyBuffer.items.len), msg);
-        _ = try messageWriter.writeAll(bodyBuffer.items);
+        try messageWriter.flush();
     }
 };

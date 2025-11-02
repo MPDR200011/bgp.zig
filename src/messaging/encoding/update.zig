@@ -18,7 +18,7 @@ fn calculateRoutesLength(routes: []const model.Route) usize {
     return total;
 }
 
-fn writeRoutes(routes: []const model.Route, writer: std.io.AnyWriter) !void {
+fn writeRoutes(routes: []const model.Route, writer: *std.Io.Writer) !void {
     for (routes) |route| {
         try writer.writeInt(u8, route.prefixLength, .big);
 
@@ -33,13 +33,13 @@ fn calculateAttributesLength(attrs: PathAttributes) usize {
     return 0;
 }
 
-fn writeAttributes(attrs: PathAttributes, writer: std.io.AnyWriter) !void {
+fn writeAttributes(attrs: PathAttributes, writer: *std.Io.Writer) !void {
     // FIXME complete dis
     _ = attrs;
     _ = writer;
 }
 
-pub fn writeUpdateBody(msg: model.UpdateMessage, writer: std.io.AnyWriter) !void {
+pub fn writeUpdateBody(msg: model.UpdateMessage, writer: *std.Io.Writer) !void {
     try writer.writeInt(u16, @intCast(calculateRoutesLength(msg.withdrawnRoutes)), .big);
     try writeRoutes(msg.withdrawnRoutes, writer);
 
