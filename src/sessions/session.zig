@@ -274,6 +274,7 @@ pub const Session = struct {
         };
 
         const writeBuffer = try self.allocator.alloc(u8, 8000);
+        defer self.allocator.free(writeBuffer);
         var connectionWriter = connection.writer(writeBuffer).interface;
         try self.messageEncoder.writeMessage(msg, &connectionWriter);
 
