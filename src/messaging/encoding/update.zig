@@ -101,12 +101,14 @@ test "writeRoutes()" {
         31, 127, 0, 42, 69 
     };
 
-    var buffer = std.ArrayList(u8).init(testing.allocator);
-    defer buffer.deinit();
+    var writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer writer.deinit();
+    
+    try writeRoutes(&testRoutes, &writer.writer);
 
-    try writeRoutes(&testRoutes, buffer.writer().any());
-
-    try testing.expectEqualSlices(u8, &expectedBuffer, buffer.items);
+    const writtenBuffer = try writer.toOwnedSlice();
+    defer testing.allocator.free(writtenBuffer);
+    try testing.expectEqualSlices(u8, &expectedBuffer, writtenBuffer);
 }
 
 test "writeUpdateBody()" {
@@ -154,10 +156,12 @@ test "writeUpdateBody()" {
         31, 127, 0, 42, 69 
     };
 
-    var buffer = std.ArrayList(u8).init(testing.allocator);
-    defer buffer.deinit();
+    var writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer writer.deinit();
 
-    try writeUpdateBody(msg, buffer.writer().any());
+    try writeUpdateBody(msg, &writer.writer);
 
-    try testing.expectEqualSlices(u8, &expectedBuffer, buffer.items);
+    const writtenBuffer = try writer.toOwnedSlice();
+    defer testing.allocator.free(writtenBuffer);
+    try testing.expectEqualSlices(u8, &expectedBuffer, writtenBuffer);
 }

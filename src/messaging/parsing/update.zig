@@ -104,9 +104,12 @@ const testing = std.testing;
 
 fn testReadIntoRoute(routeBuffer: []const u8, expectedReadBytes: u16, expectedRoute: Route) !void {
     var stream = std.io.fixedBufferStream(routeBuffer[0..]);
+
+    var readBuffer: [1024]u8 = undefined;
+    var reader = stream.reader().adaptToNewApi(&readBuffer);
     const updateReader = Self{
         .allocator = testing.allocator,
-        .reader = stream.reader().any(),
+        .reader = &reader.new_interface,
     };
 
     var actualRoute: Route = undefined;
@@ -168,9 +171,11 @@ test "readRoutes()" {
 
     var stream = std.io.fixedBufferStream(routesBuffer[0..]);
 
+    var readBuffer: [1024]u8 = undefined;
+    var reader = stream.reader().adaptToNewApi(&readBuffer);
     const updateReader = Self{
         .allocator = testing.allocator,
-        .reader = stream.reader().any(),
+        .reader = &reader.new_interface,
     };
     const routes = try updateReader.readRoutes(routesBuffer.len);
     defer routes.deinit();
@@ -216,9 +221,11 @@ test "readUpdateMessage()" {
 
     var stream = std.io.fixedBufferStream(messageBuffer[0..]);
 
+    var readBuffer: [1024]u8 = undefined;
+    var reader = stream.reader().adaptToNewApi(&readBuffer);
     const updateReader = Self{
         .allocator = testing.allocator,
-        .reader = stream.reader().any(),
+        .reader = &reader.new_interface,
     };
     const message = try updateReader.readUpdateMessage(messageBuffer.len);
     defer message.deinit();

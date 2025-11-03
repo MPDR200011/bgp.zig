@@ -275,8 +275,8 @@ pub const Session = struct {
 
         const writeBuffer = try self.allocator.alloc(u8, 8000);
         defer self.allocator.free(writeBuffer);
-        var connectionWriter = connection.writer(writeBuffer).interface;
-        try self.messageEncoder.writeMessage(msg, &connectionWriter);
+        var connectionWriter = connection.writer(writeBuffer);
+        try self.messageEncoder.writeMessage(msg, &connectionWriter.interface);
 
         if (msg == .UPDATE) {
             try self.keepAliveTimer.reschedule();
@@ -348,12 +348,11 @@ pub const Session = struct {
 
         self.connectionState = .Closing;
 
-        if (self.peerConnection) |conn| {
-            conn.close();
+        if (self.peerConnection) |c| {
+            c.close();
+            self.peerConnectionThread.?.join();
         }
-        if (self.peerConnectionThread) |t| {
-            t.join();
-        }
+
         self.peerConnection = null;
         self.peerConnectionThread = null;
     }
