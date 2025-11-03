@@ -40,18 +40,20 @@ pub const std_options: std.Options = .{
 
 pub var shutdownBarrier: Barrier = .init(true);
 
-pub fn getStdErrWriter() std.Io.Writer {
+pub fn getStdErrWriter() *std.Io.Writer {
     const S = struct {
         var stdErrBuffer: [1024]u8 = undefined;
         var writer: ?std.fs.File.Writer = null;
+        var interface: ?*std.Io.Writer = null;
     };
 
-    if (S.writer) |w| {
-        return w.interface;
+    if (S.interface) |i| {
+        return i;
     }
 
     S.writer = std.fs.File.stderr().writer(&S.stdErrBuffer);
-    return S.writer.?.interface;
+    S.interface = &S.writer.?.interface;
+    return S.interface.?;
 }
 
 pub fn myLogFn(
@@ -111,8 +113,8 @@ pub fn main() !void {
         .allocator = gpa,
     }) catch |err| {
         // Report useful error and exit.
-        var stderr = getStdErrWriter();
-        diag.report(&stderr, err) catch {};
+        const stderr = getStdErrWriter();
+        diag.report(stderr, err) catch {};
         return err;
     };
     defer res.deinit();
