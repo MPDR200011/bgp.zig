@@ -226,22 +226,19 @@ pub fn main() !void {
         std.log.err("Error starting server {}", .{err});
         return err;
     };
+    defer {
+        std.log.info("Shutting down server", .{});
+        server.stop() catch |err| {
+            std.log.err("Error shutting down server {}", .{err});
+            std.process.abort();
+        };
+        serverThread.join();
+        std.log.info("Server shutdown", .{});
+    }
 
     std.log.info("Waiting for shutdown signal", .{});
     shutdownBarrier.wait();
     std.log.info("Shutdown initiated", .{});
-
-    // Shutdown checklist
-    // 1 - Stop accepting more connections
-    std.log.info("Shutting down server", .{});
-    server.stop() catch |err| {
-        std.log.err("Error shutting down server {}", .{err});
-        std.process.abort();
-    };
-    serverThread.join();
-    std.log.info("Server shutdown", .{});
-
-    // 2 - Shutdown all sessions
 }
 
 test {
