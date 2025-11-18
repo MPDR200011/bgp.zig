@@ -33,7 +33,13 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
     connection: while (true) {
         std.log.debug("Reading next message from socket: {}", .{connection.handle});
         const message: model.BgpMessage = ctx.session.messageReader.readMessage(clientReader.interface()) catch |err| {
+            if (ctx.session.connectionState == .Closing) {
+                std.log.info("Connection closing, terminating handler thread", .{});
+                break :connection;
+            }
+
             std.log.err("Error reading next BGP message: {}", .{err});
+
 
             switch (err) {
                 error.EndOfStream => {

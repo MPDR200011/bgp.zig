@@ -108,9 +108,11 @@ fn sendDelayOpenEvent(p: *Peer) void {
     };
 }
 
-pub const ConnectionState = enum(u8) {
-    Open = 1,
-    Closing = 2,
+pub const ConnectionState = enum {
+    Opening,
+    Open,
+    Closing,
+    Closed,
 };
 
 const StartConnContext = struct { session: *Session, allocator: std.mem.Allocator };
@@ -124,11 +126,13 @@ fn connectionStartThread(ctx: StartConnContext) void {
 
     std.debug.assert(ctx.session.peerConnection == null);
 
+    ctx.session.connectionState = .Opening;
+
     const peerAddress = std.net.Address.initIp4(ctx.session.parent.sessionAddresses.peerAddress.address, ctx.session.parent.sessionPorts.peerPort);
     const peerConnection = std.net.tcpConnectToAddress(peerAddress) catch |err| {
         std.log.err("Failed to establish TCP connection with peer: {}", .{err});
 
-        ctx.session.connectionState = .Closing;
+        ctx.session.connectionState = .Closed;
         ctx.session.submitEvent(.{ .TcpConnectionFailed = {} }) catch {
             return;
         };
@@ -144,7 +148,7 @@ fn connectionStartThread(ctx: StartConnContext) void {
     ctx.session.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
         std.log.err("Failed to start connection connection thread: {}", .{err});
 
-        ctx.session.connectionState = .Closing;
+        ctx.session.connectionState = .Closed;
 
         ctx.session.peerConnection.?.close();
         ctx.session.peerConnection = null;
@@ -360,6 +364,7 @@ pub const Session = struct {
 
         self.peerConnection = null;
         self.peerConnectionThread = null;
+        self.connectionState = .Closed;
     }
 
     fn switchState(self: *Self, nextState: SessionState) void {
