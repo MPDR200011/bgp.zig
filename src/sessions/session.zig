@@ -351,7 +351,10 @@ pub const Session = struct {
 
         if (self.peerConnection) |c| {
             std.log.debug("Closing connection on socket: {}", .{c.handle});
-            c.close();
+            std.posix.shutdown(c.handle, .both) catch |err| {
+                std.log.debug("Error shutting down socket: {}", .{err});
+                std.process.abort();
+            };
             self.peerConnectionThread.?.join();
         }
 
