@@ -125,6 +125,8 @@ fn acceptThread(self: *Self, peerMap: *const PeerMap) void {
         };
         errdefer posix.close(socket);
 
+        std.log.debug("Received connection on socket: {}", .{socket});
+
         const peerAddrStr = getAddrString(client_address, self.alloc) catch |err| {
             std.log.err("Error getting client address string {}", .{err});
             posix.close(socket);

@@ -31,7 +31,7 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
     // TODO: this guy will need to know if the connection teardown is graceful or not,
     // possibly a "graceful" flag in the session struct?
     connection: while (true) {
-        std.log.debug("Reading next message:", .{});
+        std.log.debug("Reading next message from socket: {}", .{connection.handle});
         const message: model.BgpMessage = ctx.session.messageReader.readMessage(clientReader.interface()) catch |err| {
             std.log.err("Error reading next BGP message: {}", .{err});
 

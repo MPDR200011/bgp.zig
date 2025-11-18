@@ -135,6 +135,7 @@ fn connectionStartThread(ctx: StartConnContext) void {
 
         return;
     };
+    std.log.debug("Peer connection established on socket: {}", .{peerConnection.handle});
 
     ctx.session.connectionState = .Open;
 
@@ -349,6 +350,7 @@ pub const Session = struct {
         self.connectionState = .Closing;
 
         if (self.peerConnection) |c| {
+            std.log.debug("Closing connection on socket: {}", .{c.handle});
             c.close();
             self.peerConnectionThread.?.join();
         }
