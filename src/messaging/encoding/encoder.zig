@@ -21,19 +21,34 @@ pub const MessageEncoder = struct {
 
     pub fn deinit(_: Self) void {}
 
-    pub fn writeMessage(_: *Self, msg: model.BgpMessage, messageWriter: *std.Io.Writer) !void {
+    pub fn writeMessage(self: *Self, msg: model.BgpMessage, messageWriter: *std.io.Writer) !void {
+        // TODO implement message size limits
+
+        // TODO decide if I want to allocate a buffer everytime or just get a
+        // pre-allocated one, or even pre-calculate the message length
+        var bodyBuffer = std.array_list.Managed(u8).init(self.allocator);
+        defer bodyBuffer.deinit();
+
+        var bodyWriter = bodyBuffer.writer().adaptToNewApi(&[0]u8{});
+        const bodyWriterItf = &bodyWriter.new_interface;
+
         switch (msg) {
             .OPEN => |openMsg| {
-                try openMessage.writeOpenBody(openMsg, messageWriter);
+                try openMessage.writeOpenBody(openMsg, bodyWriterItf);
             },
             .NOTIFICATION => |notification| {
-                try notificationMessage.writeNotification(notification, messageWriter);
+                try notificationMessage.writeNotification(notification, bodyWriterItf);
             },
             .UPDATE => |update| {
-                try updateMessage.writeUpdateBody(update, messageWriter);
+                try updateMessage.writeUpdateBody(update, bodyWriterItf);
             },
             .KEEPALIVE => {},
         }
+
+        // FIXME: We might want to put an ultimate "write limit" to prevent 
+        // messages that are to large from being sent
+        try messageHeader.writeHeader(messageWriter, @intCast(bodyBuffer.items.len), msg);
+        _ = try messageWriter.writeAll(bodyBuffer.items);
 
         try messageWriter.flush();
     }
