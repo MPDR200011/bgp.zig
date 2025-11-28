@@ -1,11 +1,11 @@
 ## TODOs
 
-- [x] Adj Rib Subscriber model
-- [x] Main Rib Subscriber model
-- [x] Universal/Shared Async task executor for RIB operations
-- [x] Address in-flight threadpool tasks at deinit time
-- [ ] IMPORTANT: Main rib can't send updates back to advertisers
-- [ ] TEST THIS SHIT, I HAVEN'T RUN THIS IN A WHILE...................
+- [ ] Rib thread:
+    - [ ] Copy adj-in -> main rib
+    - [ ] Copy main rib -> adj-out
+    - [ ] Adj-out -> peers
+    - [ ] IMPORTANT: Main rib can't send updates back to advertisers
+- [ ] Route origination
 - [ ] Transmit unrecognized optional transitive attributes
 - [ ] Rename Path -> Route
 
