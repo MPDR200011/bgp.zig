@@ -241,10 +241,10 @@ pub const Session = struct {
 
         self.eventQueue.deinit(self.allocator);
 
-        if (self.adjRibInManager) |adjInMngr| {
+        if (self.adjRibInManager) |*adjInMngr| {
             adjInMngr.deinit();
         }
-        if (self.adjRibOutManager) |adjOutMngr| {
+        if (self.adjRibOutManager) |*adjOutMngr| {
             adjOutMngr.deinit();
         }
     }
