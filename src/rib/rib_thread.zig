@@ -4,14 +4,14 @@ const adjRibManager = @import("adj_rib_manager.zig");
 const mainRibManager = @import("main_rib_manager.zig");
 const model = @import("../messaging/model.zig");
 
+
+const Allocator = std.mem.Allocator;
+
+const PeerMap = @import("../peer_map.zig").PeerMap;
 const AdjRibManager = adjRibManager.AdjRibManager;
 const RibManager = mainRibManager.RibManager;
 
-pub fn syncFromAdjInToMain(adjRib: *AdjRibManager, mainRib: *RibManager) !void {
-    adjRib.ribMutex.lock();
-    mainRib.ribMutex.lock();
-    defer adjRib.ribMutex.unlock();
-    defer mainRib.ribMutex.unlock();
+const RouteList = std.ArrayList(model.Route);
 
 const SyncResult = struct {
     deletedRoutes: RouteList,
@@ -28,6 +28,10 @@ const SyncResult = struct {
     }
 };
 
+fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibManager, mainRib: *RibManager) !SyncResult {
+    var res: SyncResult = .init;
+    errdefer res.deinit(alloc);
+
     // Check for dropped routes
     var mainIt = mainRib.rib.prefixes.iterator();
     while (mainIt.next()) |mainEntry| {
@@ -42,14 +46,25 @@ const SyncResult = struct {
         }
 
         // Delete the route from the main rib if not
-        _ = mainRib.rib.removePath(mainEntry.key_ptr.*, adjRib.neighbor);
+        try res.deletedRoutes.append(alloc, mainEntry.key_ptr.*);
     }
 
+    for (res.deletedRoutes.items) |routeToRemove| {
+        _ = mainRib.rib.removePath(routeToRemove, adjRib.neighbor);
+    }
 
     // Update all paths
     var adjIt = adjRib.adjRib.prefixes.iterator();
     while (adjIt.next()) |adjEntry| {
+        // TODO: Equality check to save on work
         try mainRib.rib.setPath(adjEntry.key_ptr.*, adjRib.neighbor, adjEntry.value_ptr.attrs);
+
+        try res.updatedRoutes.append(alloc, adjEntry.key_ptr.*);
+    }
+
+    return res;
+}
+
 fn syncFromMainToAdjOut(alloc: Allocator, adjRib: *AdjRibManager, mainRib: *const RibManager) !SyncResult {
     var res: SyncResult = .init;
     errdefer res.deinit(alloc);
@@ -96,7 +111,8 @@ test "Adj -> Main Adds Routes" {
     try adjRib.setPath(.{.prefixData = [4]u8{10,0,1,0}, .prefixLength = 24}, attrs);
     try adjRib.setPath(.{.prefixData = [4]u8{10,0,2,0}, .prefixLength = 24}, attrs);
 
-    try syncFromAdjInToMain(&adjRib, &mainRib);
+    var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib);
+    defer res.deinit(t.allocator);
 
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 2);
     try t.expect(adjRib.adjRib.prefixes.contains(.{.prefixData = [4]u8{10,0,1,0}, .prefixLength = 24}));
@@ -125,7 +141,8 @@ test "Adj -> Main Removes Routes" {
 
     try t.expectEqual(mainRib.rib.prefixes.count(), 2);
 
-    try syncFromAdjInToMain(&adjRib, &mainRib);
+    var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib);
+    defer res.deinit(t.allocator);
 
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 0);
     try t.expectEqual(mainRib.rib.prefixes.count(), 0);
@@ -155,7 +172,8 @@ test "Adj -> Main Updates Routes" {
     try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{.prefixData = [4]u8{10,0,1,0}, .prefixLength = 24}).?.attrs.localPref);
     try t.expectEqual(100, mainRib.rib.prefixes.get(.{.prefixData = [4]u8{10,0,1,0}, .prefixLength = 24}).?.paths.get(adjRib.neighbor).?.attrs.localPref);
 
-    try syncFromAdjInToMain(&adjRib, &mainRib);
+    var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib);
+    defer res.deinit(t.allocator);
 
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 1);
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
