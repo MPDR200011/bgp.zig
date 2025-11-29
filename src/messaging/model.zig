@@ -225,6 +225,14 @@ pub const PathAttributes = struct {
             .aggregator = self.aggregator,
         };
     }
+
+    /// > 0 => self is more prefered than other
+    /// < 0 => self is less prefered than other
+    /// = 0 => Tie
+    pub fn cmp(self: *const Self, other: *const Self) i32 {
+        // FIXME: Temporary implementation
+        return @as(i32, @intCast(self.localPref)) - @as(i32, @intCast(other.localPref));
+    }
 };
 
 pub const UpdateMessage = struct {

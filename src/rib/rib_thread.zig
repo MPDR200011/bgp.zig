@@ -66,12 +66,7 @@ fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibManager, mainRib: 
 }
 
 fn updateMainRib(alloc: Allocator, mainRib: *RibManager) !RouteList {
-    // TODO: Tests
-
-    // We're assuming the rib is lock from the caller
-    std.debug.assert(!mainRib.ribMutex.tryLock());
-
-    const updatedRoutes: RouteList = .{};
+    var updatedRoutes: RouteList = .{};
     errdefer updatedRoutes.deinit(alloc);
 
     // best path selection
@@ -83,23 +78,27 @@ fn updateMainRib(alloc: Allocator, mainRib: *RibManager) !RouteList {
 
         var pathsIt = ribEntry.paths.iterator();
         var nextHop = ribEntry.bestPath orelse pathsIt.next().?.key_ptr.*;
-        // var bestPath = ribEntry.paths.getPtr(nextHop).?;
+        var bestPath = ribEntry.paths.getPtr(nextHop).?;
 
         var updated = false;
         while (pathsIt.next()) |pathsEntry| {
-            // TODO: route comparison
-            if (false) {
+            if (nextHop.equals(pathsEntry.key_ptr.*)) {
                 continue;
             }
 
+            if (pathsEntry.value_ptr.attrs.cmp(&bestPath.attrs) <= 0) {
+                continue;
+            }
+            // TODO: More consistent tie break logic
+
             nextHop = pathsEntry.key_ptr.*;
-            // bestPath = pathsEntry.value_ptr;
+            bestPath = pathsEntry.value_ptr;
             updated = true;
         }
 
         if (updated) {
             ribEntry.bestPath = nextHop;
-            try updatedRoutes.append(alloc, entry);
+            try updatedRoutes.append(alloc, entry.key_ptr.*);
         }
     }
 
@@ -273,6 +272,44 @@ test "Adj -> Main Updates Routes" {
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
     try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{.prefixData = [4]u8{10,0,1,0}, .prefixLength = 24}).?.attrs.localPref);
     try t.expectEqual(110, mainRib.rib.prefixes.get(.{.prefixData = [4]u8{10,0,1,0}, .prefixLength = 24}).?.paths.get(adjRib.neighbor).?.attrs.localPref);
+}
+
+test "Main Rib Update" {
+    var mainRib: RibManager = try .init(t.allocator);
+    defer mainRib.deinit();
+
+    const neighbor1: ip.IpAddress = .{ .V4 = try .parse("192.168.0.1") };
+    const neighbor2: ip.IpAddress = .{ .V4 = try .parse("192.168.0.2") };
+
+    const route1: model.Route = .{.prefixData = [4]u8{10,0,1,0}, .prefixLength = 24};
+    const route2: model.Route = .{.prefixData = [4]u8{10,0,2,0}, .prefixLength = 24};
+    const route3: model.Route = .{.prefixData = [4]u8{10,0,3,0}, .prefixLength = 24};
+
+    const asPath: model.ASPath = .{
+        .allocator = t.allocator,
+        .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{})
+    };
+    const morePrefAttrs = model.PathAttributes{.allocator = t.allocator, .origin = .EGP, .asPath = asPath , .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 110, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null};
+    const lessPredAttrs = model.PathAttributes{.allocator = t.allocator, .origin = .EGP, .asPath = asPath , .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null};
+
+    try mainRib.setPath(route1, neighbor1, morePrefAttrs);
+    try mainRib.setPath(route1, neighbor2, lessPredAttrs);
+    mainRib.rib.prefixes.getPtr(route1).?.bestPath = neighbor2;
+
+    try mainRib.setPath(route2, neighbor1, morePrefAttrs);
+    try mainRib.setPath(route2, neighbor2, lessPredAttrs);
+    mainRib.rib.prefixes.getPtr(route2).?.bestPath = neighbor1;
+
+    try mainRib.setPath(route3, neighbor1, lessPredAttrs);
+    try mainRib.setPath(route3, neighbor2, lessPredAttrs);
+    mainRib.rib.prefixes.getPtr(route3).?.bestPath = neighbor1;
+
+    var res = try updateMainRib(t.allocator, &mainRib);
+    defer res.deinit(t.allocator);
+
+    try t.expectEqual(1, res.items.len);
+
+    try t.expect(mainRib.rib.prefixes.get(route1).?.bestPath.?.equals(neighbor1));
 }
 
 test "Main -> Adj Adds Routes" {
