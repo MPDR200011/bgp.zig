@@ -42,13 +42,14 @@ const RibEntry = struct {
     allocator: Allocator,
     route: Route,
 
-    // TODO: best path
+    bestPath: ?ip.IpAddress,
     paths: PathMap,
 
     pub fn init(allocator: Allocator, route: Route) Self {
         return Self{
             .allocator = allocator,
             .route = route,
+            .bestPath = null,
             .paths = .init(allocator),
         };
     }
@@ -62,6 +63,11 @@ const RibEntry = struct {
     } 
 
     pub fn addPath(self: *Self, advertiser: ip.IpAddress, attrs: PathAttributes) !void {
+        if (self.paths.count() == 0) {
+            std.debug.assert(self.bestPath == null);
+            self.bestPath = advertiser;
+        }
+
         const res = try self.paths.getOrPut(advertiser);
         if (res.found_existing) {
             res.value_ptr.attrs.deinit();
@@ -75,6 +81,13 @@ const RibEntry = struct {
     }
 
     pub fn removePath(self: *Self, advertiser: ip.IpAddress) void {
+        if (self.bestPath != null and self.bestPath.?.equals(advertiser)) {
+            // FIXME: this might be dangerous... be it'll happen when the main
+            // rib is locked by the time the lock is lifted this best path
+            // should be pointing to the correct thing
+            self.bestPath = null;
+        }
+
         const path = self.paths.getPtr(advertiser) orelse return;
 
         path.deinit();

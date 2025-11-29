@@ -65,6 +65,48 @@ fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibManager, mainRib: 
     return res;
 }
 
+fn updateMainRib(alloc: Allocator, mainRib: *RibManager) !RouteList {
+    // TODO: Tests
+
+    // We're assuming the rib is lock from the caller
+    std.debug.assert(!mainRib.ribMutex.tryLock());
+
+    const updatedRoutes: RouteList = .{};
+    errdefer updatedRoutes.deinit(alloc);
+
+    // best path selection
+    var mainIt = mainRib.rib.prefixes.iterator(); 
+    while (mainIt.next()) |entry| {
+        const ribEntry = entry.value_ptr;
+
+        std.debug.assert(ribEntry.paths.count() > 0);
+
+        var pathsIt = ribEntry.paths.iterator();
+        var nextHop = ribEntry.bestPath orelse pathsIt.next().?.key_ptr.*;
+        // var bestPath = ribEntry.paths.getPtr(nextHop).?;
+
+        var updated = false;
+        while (pathsIt.next()) |pathsEntry| {
+            // TODO: route comparison
+            if (false) {
+                continue;
+            }
+
+            nextHop = pathsEntry.key_ptr.*;
+            // bestPath = pathsEntry.value_ptr;
+            updated = true;
+        }
+
+        if (updated) {
+            ribEntry.bestPath = nextHop;
+            try updatedRoutes.append(alloc, entry);
+        }
+    }
+
+    // TODO: what if the best path got updated in the adj-in -> main sync?
+    return updatedRoutes;
+}
+
 fn syncFromMainToAdjOut(alloc: Allocator, adjRib: *AdjRibManager, mainRib: *const RibManager) !SyncResult {
     var res: SyncResult = .init;
     errdefer res.deinit(alloc);
