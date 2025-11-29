@@ -302,7 +302,7 @@ test "Main Rib Update" {
 
     try mainRib.setPath(route3, neighbor1, lessPredAttrs);
     try mainRib.setPath(route3, neighbor2, lessPredAttrs);
-    mainRib.rib.prefixes.getPtr(route3).?.bestPath = neighbor1;
+    mainRib.rib.prefixes.getPtr(route3).?.bestPath = neighbor2;
 
     var res = try updateMainRib(t.allocator, &mainRib);
     defer res.deinit(t.allocator);
@@ -310,6 +310,8 @@ test "Main Rib Update" {
     try t.expectEqual(1, res.items.len);
 
     try t.expect(mainRib.rib.prefixes.get(route1).?.bestPath.?.equals(neighbor1));
+    try t.expect(mainRib.rib.prefixes.get(route2).?.bestPath.?.equals(neighbor1));
+    try t.expect(mainRib.rib.prefixes.get(route3).?.bestPath.?.equals(neighbor2));
 }
 
 test "Main -> Adj Adds Routes" {
