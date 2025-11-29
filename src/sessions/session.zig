@@ -240,6 +240,13 @@ pub const Session = struct {
         self.delayOpenTimer.deinit();
 
         self.eventQueue.deinit(self.allocator);
+
+        if (self.adjRibInManager) |adjInMngr| {
+            adjInMngr.deinit();
+        }
+        if (self.adjRibOutManager) |adjOutMngr| {
+            adjOutMngr.deinit();
+        }
     }
 
     pub fn initBgpResourcesFromOpenMessage(self: *Self, msg: messageModel.OpenMessage) !void {

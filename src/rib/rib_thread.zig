@@ -133,6 +133,58 @@ fn syncFromMainToAdjOut(alloc: Allocator, adjRib: *AdjRibManager, mainRib: *cons
 
     return res;
 }
+
+const RibThreadContext = struct {
+    allocator: Allocator,
+    mainRib: *RibManager,
+    peerMap: *PeerMap,
+};
+
+fn mainRibThread(ctx: RibThreadContext) !void {
+    ctx.mainRib.ribMutex.lock();
+    defer ctx.adjRib.ribMutex.unlock();
+
+    // sync adj-in -> main rib
+    var peerIt = ctx.peerMap.valueIterator();
+    while (peerIt.next()) |peer| {
+        // Lock the session to grab the adjIn reference
+        peer.*.session.mutex.lock();
+
+        const adjIn = &peer.*.session.adjRibInManager;
+        adjIn.ribMutex.lock();
+        defer adjIn.ribMutex.unlock();
+
+        // Once we grab the adjIn and lock it we can unlock the session
+        // While the adjIn is locked the session can't terminate
+        peer.*.session.mutex.unlock();
+
+        const result = try syncFromAdjInToMain(ctx.allocator, adjIn, ctx.mainRib);
+        result.deinit(ctx.allocator);
+    }
+
+    // main rib best path selection
+    const updatedRoutes = try updateMainRib(ctx.allocator, ctx.mainRib);
+    defer updatedRoutes.deinit(ctx.allocator);
+
+    // sync main -> adj-out ribs
+    peerIt = ctx.peerMap.valueIterator();
+    while (peerIt.next()) |peer| {
+        // Lock the session to grab the adjIn reference
+        peer.*.session.mutex.lock();
+
+        const adjOut = &peer.*.session.adjRibOutManager;
+        adjOut.ribMutex.lock();
+        defer adjOut.ribMutex.unlock();
+
+        // Once we grab the adjOut and lock it we can unlock the session
+        // While the adjOut is locked the session can't terminate
+        peer.*.session.mutex.unlock();
+
+        const result = try syncFromMainToAdjOut(ctx.allocator, adjOut, ctx.mainRib, updatedRoutes);
+        result.deinit(ctx.allocator);
+    }
+
+    // TODO: send out messages
 }
 
 const t = std.testing;
