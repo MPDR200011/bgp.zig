@@ -68,7 +68,7 @@ pub const RibManager = struct {
         };
     }
 
-    pub fn deinit(self: *Self) Self {
+    pub fn deinit(self: *Self) void {
         self.ribMutex.lock();
         defer self.ribMutex.unlock();
 
@@ -79,7 +79,7 @@ pub const RibManager = struct {
         self.ribMutex.lock();
         defer self.ribMutex.unlock();
 
-        self.rib.setPath(route, advertiserAddress, attrs);
+        try self.rib.setPath(route, advertiserAddress, attrs);
     }
 
     pub fn removePath(self: *Self, route: Route, advertiserAddress: ip.IpAddress) !bool {

@@ -52,6 +52,8 @@ pub const AdjRib = struct {
     }
 
     pub fn removePath(self: *Self, route: Route) void {
+        const routeRes = self.prefixes.get(route);
+        routeRes.?.deinit();
         const res = self.prefixes.remove(route);
         std.debug.assert(res);
     }

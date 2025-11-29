@@ -244,4 +244,5 @@ test {
  _ =   @import("messaging/encoding/update.zig");
  _ =   @import("rib/main_rib.zig");
  _ =   @import("rib/adj_rib.zig");
+ _ =   @import("rib/rib_thread.zig");
 }

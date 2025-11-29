@@ -71,13 +71,6 @@ pub const AdjRibManager = struct {
         self.adjRib.deinit();
     }
 
-    pub fn clearAdjRib(self: *Self) void {
-        var iter = self.adjRib.prefixes.keyIterator();
-        while (iter.next()) |route| {
-            @call(.auto, self.subscription.callback, .{self.subscription, &Operation{.remove = .{&self.adjRib, route.*}}});
-        }
-    }
-
     pub fn setPath(self: *Self, route: Route, attrs: PathAttributes) !void {
         self.ribMutex.lock();
         defer self.ribMutex.unlock();
