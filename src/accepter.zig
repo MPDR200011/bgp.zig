@@ -58,7 +58,7 @@ fn wrapper(ctx: AcceptContext) !void {
     posix.getsockname(ctx.conn.stream.handle, &local_addr.any, &addr_len) catch |err| {
         std.log.err("Error getting local address for connection : {s}", .{@errorName(err)});
     };
-    const localAddrStr = try getAddrString(peerAddr, ctx.allocator);
+    const localAddrStr = try getAddrString(local_addr, ctx.allocator);
     var localSepIdx: usize = 0;
     for (localAddrStr, 0..) |c, i| {
         if (c == ':') {
