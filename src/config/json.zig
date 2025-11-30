@@ -5,7 +5,7 @@ const Allocator = std.mem.Allocator;
 
 pub const LocalConfig = struct {
     asn: u16,
-    routerId: u32,
+    routerId: []const u8,
 
     localPort: ?u16,
 };

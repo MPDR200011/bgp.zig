@@ -154,9 +154,7 @@ fn acceptThread(self: *Self, peerMap: *const PeerMap) void {
     }
 }
 
-pub fn init(alloc: Allocator, localPort: u16, processConfig: *const config.Config) !Self {
-    const address = net.Address.initIp4(.{ 0, 0, 0, 0 }, localPort);
-
+pub fn init(alloc: Allocator, address: net.Address, processConfig: *const config.Config) !Self {
     const listener = try posix.socket(address.any.family, posix.SOCK.STREAM | posix.SOCK.CLOEXEC, posix.IPPROTO.TCP);
     errdefer posix.close(listener);
 

@@ -78,6 +78,10 @@ pub fn myLogFn(
     stderr.flush() catch return;
 }
 
+fn parseRouterId(routerIdStr: []const u8) !u32 {
+    const parsedId = try ip.IpV4Address.parse(routerIdStr);
+    return parsedId.toHostByteOrder();
+}
 
 pub fn main() !void {
     std.log.info("Hello World!", .{});
@@ -162,7 +166,7 @@ pub fn main() !void {
         peer.* = session.Peer.init(.{
             .localAsn = processConfig.localConfig.asn,
             .holdTime = 15,
-            .localRouterId = processConfig.localConfig.routerId,
+            .localRouterId = try parseRouterId(processConfig.localConfig.routerId),
             .peeringMode = peeringMode,
             .delayOpen = delayOpenAmount > 0,
             .delayOpen_ms = delayOpenAmount * std.time.ms_per_s,
@@ -213,7 +217,8 @@ pub fn main() !void {
 
     std.log.debug("Registered signals", .{});
 
-    var server = Server.init(gpa, localPort, &processConfig) catch |err| {
+    const listenAddress = net.Address.initIp4(.{0, 0, 0, 0}, localPort);
+    var server = Server.init(gpa, listenAddress, &processConfig) catch |err| {
         std.log.err("Error initializing server {}", .{err});
         return err;
     };

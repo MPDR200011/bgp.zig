@@ -1,7 +1,7 @@
 {
     "localConfig": {
         "asn": 65002,
-        "routerId": 2,
+        "routerId": "192.168.1.2",
         "localPort": 9002
     },
     "peers": [
