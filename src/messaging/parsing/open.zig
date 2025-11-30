@@ -10,19 +10,24 @@ pub fn readOpenMessage(r: *std.Io.Reader) !model.OpenMessage {
     const peerRouterId = try r.takeInt(u32, .big);
     const paramsLength = try r.takeInt(u8, .big);
 
+    std.log.debug("Open Msg(Version={}, AS={}, hold={}, bodyLen={})", .{version, as, holdTime, paramsLength});
+
     var readBytes: u32 = 0;
     while (readBytes < paramsLength) {
         const parameterType = try r.takeInt(u8, .big);
         const parameterValueLength = try r.takeInt(u8, .big);
 
+        std.log.debug("Open Msg Param(type={}, valueLen={}, readBytes={})", .{parameterType, parameterValueLength, readBytes});
+
         switch (parameterType) {
-            else => {
-                return OpenParsingError.UnsupportedOptionalParameter;
-            },
+            else => {},
         }
 
-        readBytes += parameterValueLength;
+        try r.discardAll(parameterValueLength);
+        readBytes += parameterValueLength + 2;
     }
+
+    std.log.debug("Open Msg(readBytes={})", .{readBytes});
 
     if (readBytes != paramsLength) {
         return OpenParsingError.ParamLengthsInconsistency;

@@ -35,6 +35,8 @@ pub const MessageReader = struct {
     pub fn readMessage(self: *Self, stream: *std.Io.Reader) !model.BgpMessage {
         const messageHeader = try headerReader.readHeader(stream);
 
+        std.log.debug("Header(type={s}, length={})", .{@tagName(messageHeader.messageType), messageHeader.messageLength});
+
         const messageLength = messageHeader.messageLength - consts.HEADER_LENGTH;
 
         return switch (messageHeader.messageType) {
