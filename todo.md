@@ -1,8 +1,6 @@
 ## TODOs
 
 - [ ] Rib thread:
-    - [ ] Copy adj-in -> main rib
-    - [ ] Copy main rib -> adj-out
     - [ ] Adj-out -> peers
     - [ ] IMPORTANT: Main rib can't send updates back to advertisers
 - [ ] Route origination
