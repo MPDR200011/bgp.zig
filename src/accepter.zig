@@ -145,12 +145,7 @@ fn acceptThread(self: *Self, peerMap: *const PeerMap) void {
             .allocator = self.alloc, 
             .localConfig = self.processConfig.localConfig 
         };
-        var acceptHandlerThread = std.Thread.spawn(.{}, acceptHandler, .{acceptContext}) catch |err| {
-            std.log.err("Error starting accept handler {}", .{err});
-            posix.close(socket);
-            continue;
-        };
-        acceptHandlerThread.join();
+        acceptHandler(acceptContext);
     }
 }
 

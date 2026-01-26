@@ -77,32 +77,24 @@ pub const PostHandlerAction = union(enum) {
 };
 
 fn sendConnectionRetryEvent(p: *Peer) void {
-    p.lock();
-    defer p.unlock();
     p.session.submitEvent(.{ .ConnectionRetryTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
 
 fn sendKeepAliveEvent(p: *Peer) void {
-    p.lock();
-    defer p.unlock();
     p.session.submitEvent(.{ .KeepAliveTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
 
 fn sendHoldTimerEvent(p: *Peer) void {
-    p.lock();
-    defer p.unlock();
     p.session.submitEvent(.{ .HoldTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
 }
 
 fn sendDelayOpenEvent(p: *Peer) void {
-    p.lock();
-    defer p.unlock();
     p.session.submitEvent(.{ .DelayOpenTimerExpired = {} }) catch {
         std.log.err("Error event", .{});
     };
@@ -118,51 +110,52 @@ pub const ConnectionState = enum {
 const StartConnContext = struct { session: *Session, allocator: std.mem.Allocator };
 
 fn connectionStartThread(ctx: StartConnContext) void {
-    if (!ctx.session.connectionMutex.tryLock()) {
-        std.log.err("Competing threads are trying to start a TCP connection on the same session!!!", .{});
-        return;
+    {
+        ctx.session.connectionMutex.lock();
+        defer ctx.session.connectionMutex.unlock();
+
+        std.debug.assert(ctx.session.peerConnection == null);
+
+        ctx.session.connectionState = .Opening;
+
+        const peerAddress = std.net.Address.initIp4(ctx.session.parent.sessionAddresses.peerAddress.address, ctx.session.parent.sessionPorts.peerPort);
+        const peerConnection = std.net.tcpConnectToAddress(peerAddress) catch |err| {
+            std.log.err("Failed to establish TCP connection with peer: {}", .{err});
+
+            ctx.session.connectionState = .Closed;
+            ctx.session.submitEvent(.{ .TcpConnectionFailed = {} }) catch {
+                return;
+            };
+
+            return;
+        };
+        std.log.debug("Peer connection established on socket: {}", .{peerConnection.handle});
+
+        ctx.session.connectionState = .Open;
+        ctx.session.peerConnection = peerConnection;
+        const connContext: connections.ConnectionHandlerContext = .{ .session = ctx.session, .allocator = ctx.allocator };
+        ctx.session.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
+            std.log.err("Failed to start connection connection thread: {}", .{err});
+
+            ctx.session.connectionState = .Closed;
+
+            ctx.session.peerConnection.?.close();
+            ctx.session.peerConnection = null;
+
+            ctx.session.submitEvent(.{ .TcpConnectionFailed = {} }) catch {
+                return;
+            };
+
+            return;
+        };
+
+        ctx.session.submitEvent(.{ .TcpConnectionSuccessful = ctx.session.peerConnection.? }) catch {
+            return;
+        };
     }
-    defer ctx.session.connectionMutex.unlock();
 
-    std.debug.assert(ctx.session.peerConnection == null);
-
-    ctx.session.connectionState = .Opening;
-
-    const peerAddress = std.net.Address.initIp4(ctx.session.parent.sessionAddresses.peerAddress.address, ctx.session.parent.sessionPorts.peerPort);
-    const peerConnection = std.net.tcpConnectToAddress(peerAddress) catch |err| {
-        std.log.err("Failed to establish TCP connection with peer: {}", .{err});
-
-        ctx.session.connectionState = .Closed;
-        ctx.session.submitEvent(.{ .TcpConnectionFailed = {} }) catch {
-            return;
-        };
-
-        return;
-    };
-    std.log.debug("Peer connection established on socket: {}", .{peerConnection.handle});
-
-    ctx.session.connectionState = .Open;
-
-    ctx.session.peerConnection = peerConnection;
     const connContext: connections.ConnectionHandlerContext = .{ .session = ctx.session, .allocator = ctx.allocator };
-    ctx.session.peerConnectionThread = std.Thread.spawn(.{}, connections.connectionHandler, .{connContext}) catch |err| {
-        std.log.err("Failed to start connection connection thread: {}", .{err});
-
-        ctx.session.connectionState = .Closed;
-
-        ctx.session.peerConnection.?.close();
-        ctx.session.peerConnection = null;
-
-        ctx.session.submitEvent(.{ .TcpConnectionFailed = {} }) catch {
-            return;
-        };
-
-        return;
-    };
-
-    ctx.session.submitEvent(.{ .TcpConnectionSuccessful = ctx.session.peerConnection.? }) catch {
-        return;
-    };
+    connections.connectionHandler(connContext);
 }
 
 pub const Session = struct {
@@ -285,10 +278,11 @@ pub const Session = struct {
             return error.ConnectionNotUp;
         };
 
-        const writeBuffer = try self.allocator.alloc(u8, 8000);
-        defer self.allocator.free(writeBuffer);
-        var connectionWriter = connection.writer(writeBuffer);
+        std.log.debug("Sending message", .{});
+        var writeBuffer: [8000]u8 = undefined;
+        var connectionWriter = connection.writer(&writeBuffer);
         try self.messageEncoder.writeMessage(msg, &connectionWriter.interface);
+        std.log.debug("Sent message", .{});
 
         if (msg == .UPDATE) {
             try self.keepAliveTimer.reschedule();
@@ -326,11 +320,11 @@ pub const Session = struct {
     }
 
     pub fn setPeerConnection(self: *Self, connection: std.net.Stream) !void {
-        std.debug.assert(self.peerConnection == null);
-        std.debug.assert(self.peerConnectionThread == null);
-
         self.connectionMutex.lock();
         defer self.connectionMutex.unlock();
+
+        std.debug.assert(self.peerConnection == null);
+        std.debug.assert(self.peerConnectionThread == null);
 
         self.connectionState = .Open;
         self.peerConnection = connection;
@@ -342,12 +336,17 @@ pub const Session = struct {
             self.peerConnection = null;
             self.peerConnectionThread = null;
 
+            self.connectionState = .Closed;
+
             return err;
         };
     }
 
     pub fn startConnection(self: *Self) !void {
-        self.connectionState = .Open;
+        self.connectionMutex.lock();
+        defer self.connectionMutex.unlock();
+
+        std.debug.assert(self.peerConnectionThread == null);
 
         const startContext: StartConnContext = .{ .session = self, .allocator = self.allocator };
         self.peerConnectionThread = try std.Thread.spawn(.{}, connectionStartThread, .{startContext});
@@ -367,7 +366,10 @@ pub const Session = struct {
                 std.process.abort();
             };
             self.peerConnectionThread.?.join();
+            std.log.debug("thread closed", .{});
         }
+
+        self.connectionState = .Closed;
 
         self.peerConnection = null;
         self.peerConnectionThread = null;
@@ -416,11 +418,19 @@ pub const Session = struct {
         std.log.debug("<<<<<<<<Finished handling event: {s}", .{@tagName(event)});
 
         switch (event) {
-            .OpenReceived => |msg| {self.messageReader.deInitMessage(.{ .OPEN = msg });},
-            .UpdateReceived => |msg| {self.messageReader.deInitMessage(.{ .UPDATE = msg });},
-            .NotificationReceived => |msg| {self.messageReader.deInitMessage(.{ .NOTIFICATION = msg });},
-            .OpenCollisionDump => |ctx| {self.messageReader.deInitMessage(.{ .OPEN = ctx.openMsg });},
-            else => {}
+            .OpenReceived => |msg| {
+                self.messageReader.deInitMessage(.{ .OPEN = msg });
+            },
+            .UpdateReceived => |msg| {
+                self.messageReader.deInitMessage(.{ .UPDATE = msg });
+            },
+            .NotificationReceived => |msg| {
+                self.messageReader.deInitMessage(.{ .NOTIFICATION = msg });
+            },
+            .OpenCollisionDump => |ctx| {
+                self.messageReader.deInitMessage(.{ .OPEN = ctx.openMsg });
+            },
+            else => {},
         }
     }
 

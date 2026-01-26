@@ -43,8 +43,6 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
 
             switch (err) {
                 error.EndOfStream => {
-                    ctx.session.parent.lock();
-                    defer ctx.session.parent.unlock();
                     ctx.session.submitEvent(.{ .TcpConnectionFailed = {} }) catch {
                         std.log.err("Failed to handle TCP error", .{});
                         std.process.abort();
@@ -66,11 +64,11 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
             .NOTIFICATION => |msg| .{ .NotificationReceived = msg },
         };
 
-        // ctx.session.parent.lock();
-        // defer ctx.session.parent.unlock();
         ctx.session.submitEvent(event) catch |err| {
             std.log.err("Error handling event {s}: {}", .{ @tagName(event), err });
             break :connection;
         };
     }
+
+    std.log.debug("Shutting down connection handler", .{});
 }
