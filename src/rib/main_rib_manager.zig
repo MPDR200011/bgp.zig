@@ -11,6 +11,7 @@ const DoublyLinkedList = std.DoublyLinkedList;
 const Allocator = std.mem.Allocator;
 
 const Rib = rib.Rib;
+const Advertiser = common.Advertiser;
 
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
@@ -29,26 +30,24 @@ pub const Operation = union(enum) {
                 const attrs: PathAttributes = setOp[3];
                 attrs.deinit();
             },
-            else => {}
+            else => {},
         }
     }
 };
 
 pub const OutAdjRibCallback = struct {
     peerId: ip.IpAddress,
-    callback: *const fn(*OutAdjRibCallback, *const Operation) void,
+    callback: *const fn (*OutAdjRibCallback, *const Operation) void,
 
     // Leave this alone, it's only set and used by the RibManager
     callbackHandle: ?RibManager.CallbackHandle = null,
 };
-
 
 const RibTask = struct {
     self: *RibManager,
     operation: Operation,
     task: xev.ThreadPool.Task,
 };
-
 
 pub const RibManager = struct {
     const Self = @This();
@@ -75,14 +74,14 @@ pub const RibManager = struct {
         self.rib.deinit();
     }
 
-    pub fn setPath(self: *Self, route: Route, advertiserAddress: ip.IpAddress, attrs: PathAttributes) !void {
+    pub fn setPath(self: *Self, route: Route, advertiserAddress: Advertiser, attrs: PathAttributes) !void {
         self.ribMutex.lock();
         defer self.ribMutex.unlock();
 
         try self.rib.setPath(route, advertiserAddress, attrs);
     }
 
-    pub fn removePath(self: *Self, route: Route, advertiserAddress: ip.IpAddress) !bool {
+    pub fn removePath(self: *Self, route: Route, advertiserAddress: Advertiser) !bool {
         self.ribMutex.lock();
         defer self.ribMutex.unlock();
 

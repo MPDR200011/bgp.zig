@@ -7,6 +7,12 @@
 - [ ] Transmit unrecognized optional transitive attributes
 - [ ] Rename Path -> Route
 - [ ] BIRD Docker container
+- MinRouteAdvertisementIntervalTimer
+- Phase 2: Route Selection
+- "The Phase 2 decision function is blocked from running while the Phase 3
+decision function is in process.  The Phase 2 function locks all Adj-RIBs-In
+prior to commencing its function, and unlocks them on completion."
+- 
 
 
 ## Ideas

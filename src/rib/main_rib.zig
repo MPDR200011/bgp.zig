@@ -11,30 +11,38 @@ const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
 const RoutePath = common.RoutePath;
+const Advertiser = common.Advertiser;
 const RouteMapCtx = common.RouteHashFns;
 
-pub const PathMapCtx  = struct {
+pub const PathMapCtx = struct {
     const Self = @This();
 
-    pub fn hash(_: Self, r: ip.IpAddress) u64 {
+    pub fn hash(_: Self, r: Advertiser) u64 {
         switch (r) {
-            .V4 => |v4Route| {
-                const hashFn = std.hash_map.getAutoHashFn(ip.IpV4Address, void);
-                return hashFn({}, v4Route);
+            .self => {
+                return 0; // Or some other constant hash for self
             },
-            .V6 => |v6Route| {
-                const hashFn = std.hash_map.getAutoHashFn(ip.IpV6Address, void);
-                return hashFn({}, v6Route);
+            .neighbor => |neighbor| {
+                switch (neighbor) {
+                    .V4 => |v4Route| {
+                        const hashFn = std.hash_map.getAutoHashFn(ip.IpV4Address, void);
+                        return hashFn({}, v4Route);
+                    },
+                    .V6 => |v6Route| {
+                        const hashFn = std.hash_map.getAutoHashFn(ip.IpV6Address, void);
+                        return hashFn({}, v6Route);
+                    },
+                }
             },
         }
     }
 
-    pub fn eql(_: Self, r1: ip.IpAddress, r2: ip.IpAddress) bool {
+    pub fn eql(_: Self, r1: Advertiser, r2: Advertiser) bool {
         return r1.equals(r2);
     }
 };
 
-const PathMap = std.HashMap(ip.IpAddress, RoutePath, PathMapCtx, std.hash_map.default_max_load_percentage);
+const PathMap = std.HashMap(Advertiser, RoutePath, PathMapCtx, std.hash_map.default_max_load_percentage);
 
 const RibEntry = struct {
     const Self = @This();
@@ -42,7 +50,7 @@ const RibEntry = struct {
     allocator: Allocator,
     route: Route,
 
-    bestPath: ?ip.IpAddress,
+    bestPath: ?Advertiser,
     paths: PathMap,
 
     pub fn init(allocator: Allocator, route: Route) Self {
@@ -60,9 +68,9 @@ const RibEntry = struct {
             path.deinit();
         }
         self.paths.deinit();
-    } 
+    }
 
-    pub fn addPath(self: *Self, advertiser: ip.IpAddress, attrs: PathAttributes) !void {
+    pub fn addPath(self: *Self, advertiser: Advertiser, attrs: PathAttributes) !void {
         if (self.paths.count() == 0) {
             std.debug.assert(self.bestPath == null);
             self.bestPath = advertiser;
@@ -80,7 +88,7 @@ const RibEntry = struct {
         }
     }
 
-    pub fn removePath(self: *Self, advertiser: ip.IpAddress) void {
+    pub fn removePath(self: *Self, advertiser: Advertiser) void {
         if (self.bestPath != null and self.bestPath.?.equals(advertiser)) {
             // FIXME: this might be dangerous... be it'll happen when the main
             // rib is locked by the time the lock is lifted this best path
@@ -119,7 +127,7 @@ pub const Rib = struct {
         self.prefixes.deinit();
     }
 
-    pub fn setPath(self: *Self, route: Route, advertiser: ip.IpAddress, attrs: PathAttributes) !void {
+    pub fn setPath(self: *Self, route: Route, advertiser: Advertiser, attrs: PathAttributes) !void {
         const routeRes = try self.prefixes.getOrPut(route);
         if (!routeRes.found_existing) {
             routeRes.value_ptr.* = .init(self.allocator, route);
@@ -129,7 +137,7 @@ pub const Rib = struct {
         try ribEntry.addPath(advertiser, attrs);
     }
 
-    pub fn removePath(self: *Self, route: Route, advertiser: ip.IpAddress) bool {
+    pub fn removePath(self: *Self, route: Route, advertiser: Advertiser) bool {
         const ribEntry = self.prefixes.getPtr(route) orelse return false;
         ribEntry.removePath(advertiser);
 
@@ -152,13 +160,13 @@ test "Add Route" {
 
     const route: Route = .default;
 
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.allocator = testing.allocator, .origin = .EGP, .asPath = .createEmpty(testing.allocator), .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = .createEmpty(testing.allocator), .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null });
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
     try testing.expectEqual(ribEntry.route, Route.default);
 
-    const routePath = ribEntry.paths.getPtr(.{ .V4 = .init(127, 0, 0, 1) }) orelse return error.PathNotFound;
-    try testing.expectEqual(routePath.advertiser, ip.IpAddress{ .V4 = .init(127, 0, 0, 1) });
+    const routePath = ribEntry.paths.getPtr(.{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }) orelse return error.PathNotFound;
+    try testing.expect(routePath.advertiser.equals(.{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }));
 
     const attrs: PathAttributes = routePath.attrs;
 
@@ -182,7 +190,7 @@ test "Set Route" {
     const asPathSegments = seg: {
         const segments = try testing.allocator.alloc(model.ASPathSegment, 3);
         for (segments, 0..) |*s, i| {
-            s.* = .{.allocator = testing.allocator, .segType = .AS_Set, .contents = try testing.allocator.dupe(u16, &[_]u16{@intCast(i)}) };
+            s.* = .{ .allocator = testing.allocator, .segType = .AS_Set, .contents = try testing.allocator.dupe(u16, &[_]u16{@intCast(i)}) };
         }
         break :seg segments;
     };
@@ -192,20 +200,20 @@ test "Set Route" {
     };
     defer asPath.deinit();
 
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.allocator = testing.allocator, .origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 2) }, .{.allocator = testing.allocator, .origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 2), .localPref = 200, .atomicAggregate = true, .multiExitDiscriminator = 69420, .aggregator = null});
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.allocator = testing.allocator, .origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null });
+    try rib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 2) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 2), .localPref = 200, .atomicAggregate = true, .multiExitDiscriminator = 69420, .aggregator = null });
+    try rib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null });
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
     try testing.expectEqual(ribEntry.route, Route.default);
     {
-        const routePath = ribEntry.paths.getPtr(.{ .V4 = .init(127, 0, 0, 1) }) orelse return error.PathNotFound;
-        try testing.expectEqual(routePath.advertiser, ip.IpAddress{ .V4 = .init(127, 0, 0, 1) });
+        const routePath = ribEntry.paths.getPtr(.{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }) orelse return error.PathNotFound;
+        try testing.expect(routePath.advertiser.equals(.{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }));
 
         const attrs: PathAttributes = routePath.attrs;
 
         try testing.expectEqual(model.Origin.EGP, attrs.origin);
-        try testing.expect(asPath.equal(attrs.asPath));
+        try testing.expect(asPath.equal(&attrs.asPath));
         try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 1), attrs.nexthop);
 
         try testing.expectEqual(142, attrs.localPref);
@@ -216,13 +224,13 @@ test "Set Route" {
     }
 
     {
-        const routePath = ribEntry.paths.getPtr(.{ .V4 = .init(127, 0, 0, 2) }) orelse return error.PathNotFound;
-        try testing.expectEqual(routePath.advertiser, ip.IpAddress{ .V4 = .init(127, 0, 0, 2) });
+        const routePath = ribEntry.paths.getPtr(.{ .neighbor = .{ .V4 = .init(127, 0, 0, 2) } }) orelse return error.PathNotFound;
+        try testing.expect(routePath.advertiser.equals(.{ .neighbor = .{ .V4 = .init(127, 0, 0, 2) } }));
 
         const attrs: PathAttributes = routePath.attrs;
 
         try testing.expectEqual(model.Origin.EGP, attrs.origin);
-        try testing.expect(asPath.equal(attrs.asPath));
+        try testing.expect(asPath.equal(&attrs.asPath));
         try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 2), attrs.nexthop);
 
         try testing.expectEqual(200, attrs.localPref);
@@ -239,20 +247,47 @@ test "Remove Path" {
 
     const route: Route = .default;
 
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 1) }, .{.allocator = testing.allocator, .origin = .EGP, .asPath = .createEmpty(testing.allocator), .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
-    try rib.setPath(route, .{ .V4 = .init(127, 0, 0, 2) }, .{.allocator = testing.allocator, .origin = .EGP, .asPath = .createEmpty(testing.allocator), .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null});
+    try rib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = .createEmpty(testing.allocator), .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null });
+    try rib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 2) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = .createEmpty(testing.allocator), .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null });
 
-    try testing.expectEqual(false, rib.removePath(route, .{ .V4 = .init(127, 0, 0, 1) }));
+    try testing.expectEqual(false, rib.removePath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }));
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.ExpectedNonNull;
 
     try testing.expectEqual(1, ribEntry.paths.count());
 
-    const path = ribEntry.paths.getPtr(.{ .V4 = .init(127, 0, 0, 2) }) orelse return error.ExpectedNonNull;
-    
-    try testing.expect(path.advertiser.?.equals(.{ .V4 = .init(127, 0, 0, 2) }));
+    const path = ribEntry.paths.getPtr(.{ .neighbor = .{ .V4 = .init(127, 0, 0, 2) } }) orelse return error.ExpectedNonNull;
 
-    try testing.expectEqual(true, rib.removePath(route, .{ .V4 = .init(127, 0, 0, 2) }));
+    try testing.expect(path.advertiser.equals(.{ .neighbor = .{ .V4 = .init(127, 0, 0, 2) } }));
+
+    try testing.expectEqual(true, rib.removePath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 2) } }));
 
     try testing.expectEqual(null, rib.prefixes.getPtr(route));
+}
+
+test "Self Advertiser" {
+    var rib: Rib = .init(testing.allocator);
+    defer rib.deinit();
+
+    const route: Route = .default;
+    const attrs = model.PathAttributes{
+        .allocator = testing.allocator,
+        .origin = .IGP,
+        .asPath = .createEmpty(testing.allocator),
+        .nexthop = ip.IpV4Address.init(127, 0, 0, 1),
+        .localPref = 100,
+        .atomicAggregate = false,
+        .multiExitDiscriminator = null,
+        .aggregator = null,
+    };
+
+    try rib.setPath(route, .self, attrs);
+
+    const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
+    const routePath = ribEntry.paths.getPtr(.self) orelse return error.PathNotFound;
+
+    try testing.expect(routePath.advertiser == .self);
+    try testing.expectEqual(model.Origin.IGP, routePath.attrs.origin);
+
+    try testing.expectEqual(true, rib.removePath(route, .self));
 }

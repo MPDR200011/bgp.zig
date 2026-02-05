@@ -25,9 +25,8 @@ const OutAdjRibCallback = ribManager.OutAdjRibCallback;
 const MainRibOperation = ribManager.Operation;
 const SubHandle = ribManager.RibManager.CallbackHandle;
 
-const AdjRibManager = adjRibManager.AdjRibManager;
-const AdjRibSubscription = adjRibManager.Subscription;
-const AdjRibOperation = adjRibManager.Operation;
+const AdjRibInManager = adjRibManager.AdjRibInManager;
+const AdjRibOutManager = adjRibManager.AdjRibOutManager;
 
 const Timer = timer.Timer;
 
@@ -192,8 +191,8 @@ pub const Session = struct {
 
     eventQueue: *zul.ThreadPool(Self.handleEvent),
 
-    adjRibInManager: ?AdjRibManager,
-    adjRibOutManager: ?AdjRibManager,
+    adjRibInManager: ?AdjRibInManager,
+    adjRibOutManager: ?AdjRibOutManager,
 
     pub fn init(parent: *Peer, alloc: Allocator) !Self {
         return .{

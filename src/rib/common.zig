@@ -6,17 +6,72 @@ const model = @import("../messaging/model.zig");
 const Allocator = std.mem.Allocator;
 
 const PathAttributes = model.PathAttributes;
+const ASPath = model.ASPath;
 const Route = model.Route;
+
+pub const Advertiser = union(enum) {
+    self,
+    neighbor: ip.IpAddress,
+
+    pub fn equals(self: Advertiser, other: Advertiser) bool {
+        switch (self) {
+            .self => return other == .self,
+            .neighbor => |ip1| switch (other) {
+                .self => return false,
+                .neighbor => |ip2| return ip1.equals(ip2),
+            },
+        }
+    }
+};
 
 pub const RoutePath = struct {
     const Self = @This();
 
-    advertiser: ?ip.IpAddress,
+    advertiser: Advertiser,
 
     attrs: PathAttributes,
 
-    pub fn deinit(self: Self) void {
+    pub fn deinit(self: *Self) void {
         self.attrs.deinit();
+    }
+
+    pub fn clone(self: *const Self, alloc: Allocator) !Self {
+        return .{
+            .advertiser = self.advertiser,
+            .attrs = try self.attrs.clone(alloc),
+        };
+    }
+
+    /// > 0 => self is more prefered than other
+    /// < 0 => self is less prefered than other
+    /// = 0 => Tie
+    pub fn cmp(self: *const Self, other: *const Self) i32 {
+        const lPrefComp = @as(i32, @intCast(self.attrs.localPref)) - @as(i32, @intCast(other.attrs.localPref));
+        if (lPrefComp != 0) {
+            return lPrefComp;
+        }
+
+        const asPathComp: i32 = @as(i32, @intCast(other.attrs.asPath.len())) - @as(i32, @intCast(self.attrs.asPath.len()));
+        if (asPathComp != 0) {
+            return asPathComp;
+        }
+
+        const originComp = @intFromEnum(other.attrs.origin) - @intFromEnum(self.attrs.origin);
+        if (originComp != 0) {
+            return originComp;
+        }
+
+        // TODO: handle MED
+
+        // TODO: external peer > internal peer
+
+        // TODO: nexthop cost tie break
+
+        // Lowest peer ID wins
+
+        // Lowest peer address wins
+        // TODO: some vendor implementations tie break based on path age, should look into that
+        return 0;
     }
 };
 
@@ -32,7 +87,6 @@ pub const RouteHashFns = struct {
         return (r1.prefixLength == r2.prefixLength) and (std.mem.eql(u8, &r1.prefixData, &r2.prefixData));
     }
 };
-
 
 // Utility struct for rib managers to keep track of inflight tasks in the
 // threadpool.
@@ -83,3 +137,179 @@ pub const TaskCounter = struct {
         self.shutdown = true;
     }
 };
+
+const testing = std.testing;
+
+test "RoutePath.cmp local preference" {
+    const allocator = testing.allocator;
+
+    const path1 = RoutePath{
+        .advertiser = .self,
+        .attrs = PathAttributes{
+            .allocator = allocator,
+            .origin = .IGP,
+            .asPath = ASPath.createEmpty(allocator),
+            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
+            .localPref = 200,
+            .atomicAggregate = false,
+            .multiExitDiscriminator = null,
+            .aggregator = null,
+        },
+    };
+    defer path1.attrs.asPath.deinit();
+
+    const path2 = RoutePath{
+        .advertiser = .self,
+        .attrs = PathAttributes{
+            .allocator = allocator,
+            .origin = .IGP,
+            .asPath = ASPath.createEmpty(allocator),
+            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
+            .localPref = 100,
+            .atomicAggregate = false,
+            .multiExitDiscriminator = null,
+            .aggregator = null,
+        },
+    };
+    defer path2.attrs.asPath.deinit();
+
+    try testing.expect(path1.cmp(&path2) > 0);
+    try testing.expect(path2.cmp(&path1) < 0);
+}
+
+test "RoutePath.cmp AS path length" {
+    const allocator = testing.allocator;
+
+    const as_path_seg = model.ASPathSegment{
+        .allocator = allocator,
+        .segType = .AS_Sequence,
+        .contents = try allocator.dupe(u16, &[_]u16{ 1, 2, 3 }),
+    };
+    const as_path_long = model.ASPath{
+        .allocator = allocator,
+        .segments = try allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{as_path_seg}),
+    };
+    defer as_path_long.deinit();
+
+    const path_long = RoutePath{
+        .advertiser = .self,
+        .attrs = PathAttributes{
+            .allocator = allocator,
+            .origin = .IGP,
+            .asPath = as_path_long,
+            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
+            .localPref = 100,
+            .atomicAggregate = false,
+            .multiExitDiscriminator = null,
+            .aggregator = null,
+        },
+    };
+
+    const path_short = RoutePath{
+        .advertiser = .self,
+        .attrs = PathAttributes{
+            .allocator = allocator,
+            .origin = .IGP,
+            .asPath = ASPath.createEmpty(allocator),
+            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
+            .localPref = 100, // Equal localPref
+            .atomicAggregate = false,
+            .multiExitDiscriminator = null,
+            .aggregator = null,
+        },
+    };
+    defer path_short.attrs.asPath.deinit();
+
+    try testing.expect(path_short.cmp(&path_long) > 0);
+    try testing.expect(path_long.cmp(&path_short) < 0);
+}
+
+test "RoutePath.cmp origin preference" {
+    const allocator = testing.allocator;
+
+    const path_igp = RoutePath{
+        .advertiser = .self,
+        .attrs = PathAttributes{
+            .allocator = allocator,
+            .origin = .IGP,
+            .asPath = ASPath.createEmpty(allocator),
+            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
+            .localPref = 100,
+            .atomicAggregate = false,
+            .multiExitDiscriminator = null,
+            .aggregator = null,
+        },
+    };
+    defer path_igp.attrs.asPath.deinit();
+
+    const path_egp = RoutePath{
+        .advertiser = .self,
+        .attrs = PathAttributes{
+            .allocator = allocator,
+            .origin = .EGP,
+            .asPath = ASPath.createEmpty(allocator),
+            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
+            .localPref = 100,
+            .atomicAggregate = false,
+            .multiExitDiscriminator = null,
+            .aggregator = null,
+        },
+    };
+    defer path_egp.attrs.asPath.deinit();
+
+    const path_inc = RoutePath{
+        .advertiser = .self,
+        .attrs = PathAttributes{
+            .allocator = allocator,
+            .origin = .INCOMPLETE,
+            .asPath = ASPath.createEmpty(allocator),
+            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
+            .localPref = 100,
+            .atomicAggregate = false,
+            .multiExitDiscriminator = null,
+            .aggregator = null,
+        },
+    };
+    defer path_inc.attrs.asPath.deinit();
+
+    // IGP > EGP > INCOMPLETE
+    try testing.expect(path_igp.cmp(&path_egp) > 0);
+    try testing.expect(path_egp.cmp(&path_inc) > 0);
+    try testing.expect(path_igp.cmp(&path_inc) > 0);
+}
+
+test "RoutePath.cmp tie" {
+    const allocator = testing.allocator;
+
+    const path1 = RoutePath{
+        .advertiser = .self,
+        .attrs = PathAttributes{
+            .allocator = allocator,
+            .origin = .IGP,
+            .asPath = ASPath.createEmpty(allocator),
+            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
+            .localPref = 100,
+            .atomicAggregate = false,
+            .multiExitDiscriminator = null,
+            .aggregator = null,
+        },
+    };
+    defer path1.attrs.asPath.deinit();
+
+    const path2 = RoutePath{
+        .advertiser = .self,
+        .attrs = PathAttributes{
+            .allocator = allocator,
+            .origin = .IGP,
+            .asPath = ASPath.createEmpty(allocator),
+            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
+            .localPref = 100,
+            .atomicAggregate = false,
+            .multiExitDiscriminator = null,
+            .aggregator = null,
+        },
+    };
+    defer path2.attrs.asPath.deinit();
+
+    try testing.expectEqual(@as(i32, 0), path1.cmp(&path2));
+}

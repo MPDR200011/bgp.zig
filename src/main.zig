@@ -90,10 +90,6 @@ pub fn main() !void {
     // Initializing GPA for the process
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     const gpa, const is_debug = gpa: {
-        if (builtin.os.tag == .wasi) {
-            break :gpa .{ std.heap.wasm_allocator, false };
-        }
-
         break :gpa switch (builtin.mode) {
             .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
             .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
@@ -154,7 +150,7 @@ pub fn main() !void {
                 break :modeBlock .PASSIVE;
             } else if (std.mem.eql(u8, peerConfig.peeringMode, "ACTIVE")) {
                 break :modeBlock .ACTIVE;
-            } else  {
+            } else {
                 std.log.err("Invalid Peering Mode: {s}", .{peerConfig.peeringMode});
                 std.process.abort();
             }
@@ -178,7 +174,7 @@ pub fn main() !void {
                 .localPort = localPort,
                 .peerPort = peerConfig.peerPort orelse 179,
             },
-            }, peer, gpa) catch |err| {
+        }, peer, gpa) catch |err| {
             std.log.err("Failed to initialize peer memory: {}", .{err});
             return err;
         };
@@ -199,14 +195,12 @@ pub fn main() !void {
     std.log.debug("Registering signals", .{});
 
     const sigHandler = std.posix.Sigaction{
-        .handler = .{ 
-            .handler = struct { 
-                pub fn handler(sig: i32) callconv(.c) void {
-                    std.log.info("Received signal {}", .{sig});
-                    shutdownBarrier.open();
-                }
-            }.handler
-        },
+        .handler = .{ .handler = struct {
+            pub fn handler(sig: i32) callconv(.c) void {
+                std.log.info("Received signal {}", .{sig});
+                shutdownBarrier.open();
+            }
+        }.handler },
         .mask = std.posix.sigemptyset(),
         .flags = 0,
     };
@@ -217,7 +211,7 @@ pub fn main() !void {
 
     std.log.debug("Registered signals", .{});
 
-    const listenAddress = net.Address.initIp4(.{0, 0, 0, 0}, localPort);
+    const listenAddress = net.Address.initIp4(.{ 0, 0, 0, 0 }, localPort);
     var server = Server.init(gpa, listenAddress, &processConfig) catch |err| {
         std.log.err("Error initializing server {}", .{err});
         return err;
@@ -242,9 +236,11 @@ pub fn main() !void {
 }
 
 test {
- _ =   @import("messaging/parsing/update.zig");
- _ =   @import("messaging/encoding/update.zig");
- _ =   @import("rib/main_rib.zig");
- _ =   @import("rib/adj_rib.zig");
- _ =   @import("rib/rib_thread.zig");
+    _ = @import("messaging/parsing/update.zig");
+    _ = @import("messaging/encoding/update.zig");
+    _ = @import("messaging/model.zig");
+    _ = @import("rib/main_rib.zig");
+    _ = @import("rib/adj_rib.zig");
+    _ = @import("rib/rib_thread.zig");
+    _ = @import("rib/common.zig");
 }
