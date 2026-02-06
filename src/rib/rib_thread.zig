@@ -223,8 +223,11 @@ fn mainRibThread(ctx: RibThreadContext) !void {
     while (peerIt.next()) |peer| {
         // Lock the session to grab the adjIn reference
         peer.*.session.mutex.lock();
+        if (peer.*.session.state != .ESTABLISHED) {
+            continue;
+        }
 
-        const adjIn = &peer.*.session.adjRibInManager;
+        const adjIn = &peer.*.session.adjRibInManager.?;
         adjIn.ribMutex.lock();
         defer adjIn.ribMutex.unlock();
 
@@ -245,6 +248,9 @@ fn mainRibThread(ctx: RibThreadContext) !void {
     while (peerIt.next()) |peer| {
         // Lock the session to grab the adjIn reference
         peer.*.session.mutex.lock();
+        if (peer.*.session.state != .ESTABLISHED) {
+            continue;
+        }
 
         const adjOut = &peer.*.session.adjRibOutManager.?;
         adjOut.ribMutex.lock();
