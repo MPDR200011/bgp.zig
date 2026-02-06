@@ -127,6 +127,7 @@ pub const ASPathSegment = struct {
 
     pub fn hash(self: Self, hasher: anytype) void {
         std.hash.autoHash(hasher, self.segType);
+        std.hash.autoHash(hasher, self.contents.len);
         for (self.contents) |item| {
             std.hash.autoHash(hasher, item);
         }
@@ -173,6 +174,7 @@ pub const ASPath = struct {
     }
 
     pub fn hash(self: Self, hasher: anytype) void {
+        std.hash.autoHash(hasher, self.segments.len);
         for (self.segments) |seg| {
             seg.hash(hasher);
         }
@@ -212,7 +214,7 @@ pub const Aggregator = struct {
 
     pub fn hash(self: Self, hasher: anytype) void {
         std.hash.autoHash(hasher, self.as);
-        std.hash.autoHash(hasher, std.mem.asBytes(&self.address));
+        std.hash.autoHash(hasher, self.address);
     }
 };
 
@@ -256,18 +258,20 @@ pub const PathAttributes = struct {
         };
     }
 
-    pub fn equal(self: Self, other: Self) bool {
+    pub fn equal(self: *const Self, other: *const Self) bool {
         if (self.origin != other.origin) return false;
         if (!self.asPath.equal(&other.asPath)) return false;
         if (!self.nexthop.equals(other.nexthop)) return false;
         if (self.localPref != other.localPref) return false;
         if (self.atomicAggregate != other.atomicAggregate) return false;
         if (self.multiExitDiscriminator != other.multiExitDiscriminator) return false;
-        if (self.aggregator == null) {
-            if (other.aggregator != null) return false;
+        if (self.aggregator) |agg| {
+            if (other.aggregator) |otherAgg| {
+                return agg.equal(otherAgg);
+            }
+            return false;
         } else {
-            if (other.aggregator == null) return false;
-            if (!self.aggregator.?.equal(other.aggregator.?)) return false;
+            return other.aggregator == null;
         }
 
         return true;
@@ -276,7 +280,7 @@ pub const PathAttributes = struct {
     pub fn hash(self: Self, hasher: anytype) void {
         std.hash.autoHash(hasher, self.origin);
         self.asPath.hash(hasher);
-        std.hash.autoHash(hasher, std.mem.asBytes(&self.nexthop));
+        std.hash.autoHash(hasher, self.nexthop);
         std.hash.autoHash(hasher, self.localPref);
         std.hash.autoHash(hasher, self.atomicAggregate);
         std.hash.autoHash(hasher, self.multiExitDiscriminator);
@@ -381,7 +385,7 @@ test "PathAttributes hash and equal" {
     const attrs2 = try attrs1.clone(allocator);
     defer attrs2.deinit();
 
-    try std.testing.expect(attrs1.equal(attrs2));
+    try std.testing.expect(attrs1.equal(&attrs2));
 
     var hasher1 = std.hash.Wyhash.init(0);
     attrs1.hash(&hasher1);
@@ -397,7 +401,7 @@ test "PathAttributes hash and equal" {
     var attrs3 = try attrs1.clone(allocator);
     defer attrs3.deinit();
     attrs3.localPref = 200;
-    try std.testing.expect(!attrs1.equal(attrs3));
+    try std.testing.expect(!attrs1.equal(&attrs3));
 
     var hasher3 = std.hash.Wyhash.init(0);
     attrs3.hash(&hasher3);
@@ -416,7 +420,7 @@ test "PathAttributes hash and equal" {
         .allocator = allocator,
         .segments = try allocator.dupe(ASPathSegment, &[_]ASPathSegment{new_seg}),
     };
-    try std.testing.expect(!attrs1.equal(attrs4));
+    try std.testing.expect(!attrs1.equal(&attrs4));
 
     var hasher4 = std.hash.Wyhash.init(0);
     attrs4.hash(&hasher4);

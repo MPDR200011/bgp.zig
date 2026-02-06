@@ -25,9 +25,58 @@ const SyncResult = struct {
 
     pub fn deinit(self: *@This(), alloc: Allocator) void {
         self.deletedRoutes.deinit(alloc);
+        for (self.updatedRoutes.items) |*update| {
+            update.@"1".deinit();
+        }
         self.updatedRoutes.deinit(alloc);
     }
 };
+
+const PathAttributesContext = struct {
+    pub fn hash(_: @This(), attrs: model.PathAttributes) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        attrs.hash(&hasher);
+        return hasher.final();
+    }
+    pub fn eql(_: @This(), a: model.PathAttributes, b: model.PathAttributes) bool {
+        return a.equal(&b);
+    }
+};
+const RouteGroups = std.HashMap(model.PathAttributes, std.ArrayList(model.Route), PathAttributesContext, std.hash_map.default_max_load_percentage);
+
+const AggregatedRoutes = struct {
+    allocator: Allocator,
+    groups: RouteGroups,
+
+    fn deinit(self: *@This()) void {
+        var it = self.groups.iterator();
+        while (it.next()) |entry| {
+            entry.key_ptr.deinit();
+            entry.value_ptr.deinit(self.allocator);
+        }
+        self.groups.deinit();
+    }
+};
+
+fn aggregateRouteUpdates(alloc: Allocator, updates: *UpdatesList) !AggregatedRoutes {
+    var aggregate: AggregatedRoutes = .{
+        .allocator = alloc,
+        .groups = .init(alloc),
+    };
+    errdefer aggregate.deinit();
+
+    for (updates.items) |update| {
+        const res = try aggregate.groups.getOrPut(update.@"1".attrs);
+        if (!res.found_existing) {
+            res.key_ptr.* = try update.@"1".attrs.clone(alloc);
+            res.value_ptr.* = .{};
+        }
+
+        try res.value_ptr.append(alloc, update.@"0");
+    }
+
+    return aggregate;
+}
 
 fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibInManager, mainRib: *RibManager) !SyncResult {
     var res: SyncResult = .init;
@@ -102,7 +151,6 @@ fn updateMainRib(alloc: Allocator, mainRib: *RibManager) !RouteList {
             bestPath = pathsEntry.value_ptr;
             updated = true;
         }
-
 
         if (updated) {
             ribEntry.bestPath = nextHop;
@@ -191,7 +239,11 @@ fn mainRibThread(ctx: RibThreadContext) !void {
         const result = try syncFromMainToAdjOut(ctx.allocator, adjOut, ctx.mainRib, updatedRoutes);
         defer result.deinit(ctx.allocator);
 
-        // TODO Aggregate routes
+        // TODO: routes are being aggregated based on nexthop, we might want to
+        // change that since nexthop will be overriten when the message goes
+        // out anyways
+        var aggregatedRoutes = aggregateRouteUpdates(ctx.allocator, &result.updatedRoutes);
+        defer aggregatedRoutes.deinit();
 
         // FIXME: THIS SHIT IS STUPID
         // FIXME: Don't send update back to neighbor that sent it to us in the first place
@@ -381,4 +433,67 @@ test "Main -> Adj Updates Routes" {
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
     try t.expectEqual(100, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref);
     try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref);
+}
+
+test "aggregateRouteUpdates grouping" {
+    const alloc = t.allocator;
+
+    const asPath = model.ASPath.createEmpty(alloc);
+    defer asPath.deinit();
+
+    const attrs1 = model.PathAttributes{
+        .allocator = alloc,
+        .origin = .IGP,
+        .asPath = try asPath.clone(alloc),
+        .nexthop = ip.IpV4Address.init(1, 1, 1, 1),
+        .localPref = 100,
+        .atomicAggregate = false,
+        .multiExitDiscriminator = null,
+        .aggregator = null,
+    };
+    defer attrs1.deinit();
+
+    const attrs2 = model.PathAttributes{
+        .allocator = alloc,
+        .origin = .IGP,
+        .asPath = try asPath.clone(alloc),
+        .nexthop = ip.IpV4Address.init(2, 2, 2, 2),
+        .localPref = 100,
+        .atomicAggregate = false,
+        .multiExitDiscriminator = null,
+        .aggregator = null,
+    };
+    defer attrs2.deinit();
+
+    var updates = UpdatesList{};
+    defer {
+        for (updates.items) |*update| {
+            update.@"1".deinit();
+        }
+        updates.deinit(alloc);
+    }
+
+    const route1 = model.Route{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 };
+    const route2 = model.Route{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 };
+    const route3 = model.Route{ .prefixData = [4]u8{ 10, 0, 3, 0 }, .prefixLength = 24 };
+
+    try updates.append(alloc, .{ route1, .{ .advertiser = .self, .attrs = try attrs1.clone(alloc) } });
+    try updates.append(alloc, .{ route2, .{ .advertiser = .self, .attrs = try attrs1.clone(alloc) } });
+    try updates.append(alloc, .{ route3, .{ .advertiser = .self, .attrs = try attrs2.clone(alloc) } });
+
+    var aggregated = try aggregateRouteUpdates(alloc, &updates);
+    defer aggregated.deinit();
+
+    try t.expectEqual(@as(usize, 2), aggregated.groups.count());
+
+    // Check attrs1 group
+    const group1 = aggregated.groups.get(attrs1).?;
+    try t.expectEqual(@as(usize, 2), group1.items.len);
+    try t.expect(group1.items[0].prefixLength == route1.prefixLength and std.mem.eql(u8, &group1.items[0].prefixData, &route1.prefixData));
+    try t.expect(group1.items[1].prefixLength == route2.prefixLength and std.mem.eql(u8, &group1.items[1].prefixData, &route2.prefixData));
+
+    // Check attrs2 group
+    const group2 = aggregated.groups.get(attrs2).?;
+    try t.expectEqual(@as(usize, 1), group2.items.len);
+    try t.expect(group2.items[0].prefixLength == route3.prefixLength and std.mem.eql(u8, &group2.items[0].prefixData, &route3.prefixData));
 }
