@@ -17,6 +17,24 @@ const RouteUpdate = std.meta.Tuple(&.{ model.Route, common.RoutePath });
 const RouteList = std.ArrayList(model.Route);
 const UpdatesList = std.ArrayList(RouteUpdate);
 
+fn filterSplitHorizon(alloc: Allocator, neighbor: ip.IpAddress, updates: UpdatesList) !UpdatesList {
+    var filtered = UpdatesList{};
+    errdefer {
+        for (filtered.items) |*update| {
+            update.@"1".deinit();
+        }
+        filtered.deinit(alloc);
+    }
+
+    const neighbor_advertiser: common.Advertiser = .{ .neighbor = neighbor };
+    for (updates.items) |update| {
+        if (!update.@"1".advertiser.equals(neighbor_advertiser)) {
+            try filtered.append(alloc, .{ update.@"0", try update.@"1".clone(alloc) });
+        }
+    }
+    return filtered;
+}
+
 const SyncResult = struct {
     deletedRoutes: RouteList,
     updatedRoutes: UpdatesList,
@@ -228,7 +246,7 @@ fn mainRibThread(ctx: RibThreadContext) !void {
         // Lock the session to grab the adjIn reference
         peer.*.session.mutex.lock();
 
-        const adjOut = &peer.*.session.adjRibOutManager;
+        const adjOut = &peer.*.session.adjRibOutManager.?;
         adjOut.ribMutex.lock();
         defer adjOut.ribMutex.unlock();
 
@@ -236,19 +254,25 @@ fn mainRibThread(ctx: RibThreadContext) !void {
         // While the adjOut is locked the session can't terminate
         peer.*.session.mutex.unlock();
 
-        const result = try syncFromMainToAdjOut(ctx.allocator, adjOut, ctx.mainRib, updatedRoutes);
+        const result = try syncFromMainToAdjOut(ctx.allocator, adjOut, ctx.mainRib);
         defer result.deinit(ctx.allocator);
 
-        // TODO: routes are being aggregated based on nexthop, we might want to
-        // change that since nexthop will be overriten when the message goes
-        // out anyways
-        var aggregatedRoutes = aggregateRouteUpdates(ctx.allocator, &result.updatedRoutes);
+        // Split Horizon: filter out routes that were advertised by this peer
+        var filteredUpdates = try filterSplitHorizon(ctx.allocator, adjOut.neighbor, result.updatedRoutes);
+        defer {
+            for (filteredUpdates.items) |*update| {
+                update.@"1".deinit();
+            }
+            filteredUpdates.deinit(ctx.allocator);
+        }
+
+        var aggregatedRoutes = try aggregateRouteUpdates(ctx.allocator, &filteredUpdates);
         defer aggregatedRoutes.deinit();
 
         // FIXME: THIS SHIT IS STUPID
         // FIXME: Don't send update back to neighbor that sent it to us in the first place
-        const updateAttrs = &adjOut.*.?.adjRib.prefixes.getPtr(result.updatedRoutes[0]).?.attrs;
-        peer.*.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, result.deletedRoutes, result.updatedRoutes, updateAttrs.*) });
+        // const updateAttrs = &adjOut.*.?.adjRib.prefixes.getPtr(result.updatedRoutes[0]).?.attrs;
+        // peer.*.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, result.deletedRoutes, result.updatedRoutes, updateAttrs.*) });
     }
 
     // TODO: send out messages
@@ -496,4 +520,58 @@ test "aggregateRouteUpdates grouping" {
     const group2 = aggregated.groups.get(attrs2).?;
     try t.expectEqual(@as(usize, 1), group2.items.len);
     try t.expect(group2.items[0].prefixLength == route3.prefixLength and std.mem.eql(u8, &group2.items[0].prefixData, &route3.prefixData));
+}
+
+test "filterSplitHorizon" {
+    const alloc = t.allocator;
+    const neighbor_ip = try ip.IpAddress.parse("192.168.1.1");
+
+    const asPath = model.ASPath.createEmpty(alloc);
+    defer asPath.deinit();
+
+    const attrs = model.PathAttributes{
+        .allocator = alloc,
+        .origin = .IGP,
+        .asPath = try asPath.clone(alloc),
+        .nexthop = ip.IpV4Address.init(1, 1, 1, 1),
+        .localPref = 100,
+        .atomicAggregate = false,
+        .multiExitDiscriminator = null,
+        .aggregator = null,
+    };
+    defer attrs.deinit();
+
+    var updates = UpdatesList{};
+    defer {
+        for (updates.items) |*update| {
+            update.@"1".deinit();
+        }
+        updates.deinit(alloc);
+    }
+
+    const route1 = model.Route{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 };
+    const route2 = model.Route{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 };
+
+    // Route 1 from self
+    try updates.append(alloc, .{ route1, .{ .advertiser = .self, .attrs = try attrs.clone(alloc) } });
+    // Route 2 from neighbor
+    try updates.append(alloc, .{ route2, .{ .advertiser = .{ .neighbor = neighbor_ip }, .attrs = try attrs.clone(alloc) } });
+
+    try t.expectEqual(@as(usize, 2), updates.items.len);
+
+    var filtered = try filterSplitHorizon(alloc, neighbor_ip, updates);
+    defer {
+        for (filtered.items) |*update| {
+            update.@"1".deinit();
+        }
+        filtered.deinit(alloc);
+    }
+
+    // Route 2 should be filtered out because it came from the same neighbor
+    try t.expectEqual(@as(usize, 1), filtered.items.len);
+    try t.expect(filtered.items[0].@"0".prefixLength == route1.prefixLength);
+    try t.expect(std.mem.eql(u8, &filtered.items[0].@"0".prefixData, &route1.prefixData));
+
+    // Original list should still have 2 items
+    try t.expectEqual(@as(usize, 2), updates.items.len);
 }
