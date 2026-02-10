@@ -238,6 +238,7 @@ pub fn main() !void {
 test {
     _ = @import("messaging/parsing/update.zig");
     _ = @import("messaging/encoding/update.zig");
+    _ = @import("messaging/encoding/utils/size/update.zig");
     _ = @import("messaging/model.zig");
     _ = @import("rib/main_rib.zig");
     _ = @import("rib/adj_rib.zig");
