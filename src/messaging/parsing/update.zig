@@ -70,6 +70,8 @@ fn readAttributes(self: Self, attributesLength: u16) !PathAttributes {
         const attributeLength: u16 = if (extendedLength) try self.reader.takeInt(u16, .big) else @intCast(try self.reader.takeInt(u8, .big));
 
         // TODO parse attributes
+        // TODO: Unrecognized non-transitive optional attributes MUST be
+        // quietly ignored and not passed along to other BGP peers.
         try self.reader.discardAll(attributeLength);
 
         bytesToRead -= 1;
