@@ -139,7 +139,7 @@ test "writeUpdateBody()" {
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
         }, 
-        PathAttributes{.allocator = testing.allocator, .origin = .EGP, .asPath = asPath , .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null},
+        PathAttributes{.allocator = testing.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = ip.IpV4Address.init(0, 0, 0, 0), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null},
     );
     defer msg.deinit();
 

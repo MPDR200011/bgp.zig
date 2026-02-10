@@ -218,28 +218,53 @@ pub const Aggregator = struct {
     }
 };
 
+fn Attribute(comptime AttrType: type) type {
+    return struct {
+        const Self = @This();
+
+        // Flags
+        partial: bool,
+        transitive: bool,
+
+        // Value
+        value: AttrType,
+
+        pub fn init(value: AttrType) Self {
+            return Self{
+                .transitive = false,
+                .partial = false,
+                .value = value
+            };
+        }
+
+        pub fn isPartial(self: *const Self) bool {
+            return self.partial;
+        }
+    };
+}
+
 pub const PathAttributes = struct {
     const Self = @This();
 
     allocator: Allocator,
 
     // Well known, Mandatory
-    origin: Origin,
-    asPath: ASPath,
-    nexthop: ip.IpV4Address,
+    origin: Attribute(Origin),
+    asPath: Attribute(ASPath),
+    nexthop: Attribute(ip.IpV4Address),
 
     // Well known
     // Mandatory for internal peers or confeds
-    localPref: u32,
+    localPref: Attribute(u32),
 
     // Well known, discretionary
-    atomicAggregate: ?bool,
+    atomicAggregate: ?Attribute(bool),
 
     // Optional, non-transitive
-    multiExitDiscriminator: ?u32,
+    multiExitDiscriminator: ?Attribute(u32),
 
     // Optional, transitive
-    aggregator: ?Aggregator,
+    aggregator: ?Attribute(Aggregator),
 
     // TODO: track partial bit in recognised attrs
     // If a path with a recognized, transitive optional attribute is accepted
@@ -254,32 +279,33 @@ pub const PathAttributes = struct {
     // peers with the Partial bit in the Attribute Flags octet set to 1.
 
     pub fn deinit(self: Self) void {
-        self.asPath.deinit();
+        self.asPath.value.deinit();
     }
 
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
-        return Self{
+        var copy = Self{
             .allocator = allocator,
             .origin = self.origin,
-            .asPath = try self.asPath.clone(allocator),
+            .asPath = self.asPath,
             .nexthop = self.nexthop,
             .localPref = self.localPref,
             .atomicAggregate = self.atomicAggregate,
             .multiExitDiscriminator = self.multiExitDiscriminator,
             .aggregator = self.aggregator,
         };
+        copy.asPath.value.clone(allocator);
     }
 
     pub fn equal(self: *const Self, other: *const Self) bool {
-        if (self.origin != other.origin) return false;
-        if (!self.asPath.equal(&other.asPath)) return false;
-        if (!self.nexthop.equals(other.nexthop)) return false;
-        if (self.localPref != other.localPref) return false;
-        if (self.atomicAggregate != other.atomicAggregate) return false;
-        if (self.multiExitDiscriminator != other.multiExitDiscriminator) return false;
+        if (self.origin.value != other.origin.value) return false;
+        if (!self.asPath.value.equal(&other.asPath.value)) return false;
+        if (!self.nexthop.value.equals(other.nexthop.value)) return false;
+        if (self.localPref.value != other.localPref.value) return false;
+        if (self.atomicAggregate.value != other.atomicAggregate.value) return false;
+        if (self.multiExitDiscriminator.value != other.multiExitDiscriminator.value) return false;
         if (self.aggregator) |agg| {
             if (other.aggregator) |otherAgg| {
-                return agg.equal(otherAgg);
+                return agg.value.equal(otherAgg.value);
             }
             return false;
         } else {
