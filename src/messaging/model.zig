@@ -208,7 +208,7 @@ pub const Aggregator = struct {
     as: u16,
     address: ip.IpV4Address,
 
-    pub fn equal(self: Self, other: Self) bool {
+    pub fn equal(self: *const Self, other: *const Self) bool {
         return self.as == other.as and self.address.equals(other.address);
     }
 
@@ -241,6 +241,29 @@ fn Attribute(comptime AttrType: type) type {
             return self.partial;
         }
     };
+}
+
+fn areOptionalAttrsEqual(comptime Type: type, attr1: ?Attribute(Type), attr2: ?Attribute(Type)) bool {
+    if (attr1) |a1| {
+        if (attr2) |a2| {
+            if (@typeInfo(Type) == .@"struct" and @hasDecl(Type, "equal")) {
+                if (!a1.value.equal(&a2.value)) {
+                    return false;
+                }
+            } else {
+                if (a1.value != a2.value) {
+                    return false;
+                }
+            }
+
+        }
+    } else {
+        if (attr2 != null) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 pub const PathAttributes = struct {
@@ -303,40 +326,16 @@ pub const PathAttributes = struct {
         if (!self.nexthop.value.equals(other.nexthop.value)) return false;
         if (self.localPref.value != other.localPref.value) return false;
 
-        if (self.atomicAggregate) |at1| {
-            if (other.atomicAggregate) |at2| {
-                if (at1.value != at2.value) {
-                    return false;
-                }
-            }
-        } else {
-            if (other.atomicAggregate != null) {
-                return false;
-            }
+        if (!areOptionalAttrsEqual(bool, self.atomicAggregate, other.atomicAggregate)) {
+            return false;
         }
 
-        if (self.multiExitDiscriminator) |med1| {
-            if (other.multiExitDiscriminator) |med2| {
-                if(med1.value != med2.value) {
-                    return false;
-                }
-            }
-        } else {
-            if(other.multiExitDiscriminator != null) {
-                return false;
-            }
+        if (!areOptionalAttrsEqual(u32, self.multiExitDiscriminator, other.multiExitDiscriminator)) {
+            return false;
         }
 
-        if (self.aggregator) |agg| {
-            if (other.aggregator) |otherAgg| {
-                if (!agg.value.equal(otherAgg.value)) {
-                    return false;
-                }
-            }
-        } else {
-            if (other.aggregator != null) {
-                return false;
-            }
+        if (!areOptionalAttrsEqual(Aggregator, self.aggregator, other.aggregator)) {
+            return false;
         }
 
         return true;
