@@ -293,7 +293,8 @@ pub const PathAttributes = struct {
             .multiExitDiscriminator = self.multiExitDiscriminator,
             .aggregator = self.aggregator,
         };
-        copy.asPath.value.clone(allocator);
+        copy.asPath.value = try self.asPath.value.clone(allocator);
+        return copy;
     }
 
     pub fn equal(self: *const Self, other: *const Self) bool {
@@ -301,29 +302,50 @@ pub const PathAttributes = struct {
         if (!self.asPath.value.equal(&other.asPath.value)) return false;
         if (!self.nexthop.value.equals(other.nexthop.value)) return false;
         if (self.localPref.value != other.localPref.value) return false;
-        if (self.atomicAggregate.value != other.atomicAggregate.value) return false;
-        if (self.multiExitDiscriminator.value != other.multiExitDiscriminator.value) return false;
+
+        if (self.atomicAggregate) |at1| {
+            if (other.atomicAggregate) |at2| {
+                return at1.value == at2.value;
+            }
+            return false;
+        } else {
+            return other.atomicAggregate != null;
+        }
+
+        if (self.multiExitDiscriminator) |med1| {
+            if (other.multiExitDiscriminator) |med2| {
+                return med1.value == med2.value;
+            }
+            return false;
+        } else {
+            return other.multiExitDiscriminator != null;
+        }
+
         if (self.aggregator) |agg| {
             if (other.aggregator) |otherAgg| {
                 return agg.value.equal(otherAgg.value);
             }
             return false;
         } else {
-            return other.aggregator == null;
+            return other.aggregator != null;
         }
 
         return true;
     }
 
     pub fn hash(self: Self, hasher: anytype) void {
-        std.hash.autoHash(hasher, self.origin);
-        self.asPath.hash(hasher);
-        std.hash.autoHash(hasher, self.nexthop);
-        std.hash.autoHash(hasher, self.localPref);
-        std.hash.autoHash(hasher, self.atomicAggregate);
-        std.hash.autoHash(hasher, self.multiExitDiscriminator);
+        std.hash.autoHash(hasher, self.origin.value);
+        self.asPath.value.hash(hasher);
+        std.hash.autoHash(hasher, self.nexthop.value);
+        std.hash.autoHash(hasher, self.localPref.value);
+        if (self.atomicAggregate) |v| {
+            std.hash.autoHash(hasher, v.value);
+        }
+        if (self.multiExitDiscriminator) |v| {
+            std.hash.autoHash(hasher, v.value);
+        }
         if (self.aggregator) |agg| {
-            agg.hash(hasher);
+            agg.value.hash(hasher);
         }
     }
 };
@@ -407,16 +429,16 @@ test "PathAttributes hash and equal" {
 
     const attrs1 = PathAttributes{
         .allocator = allocator,
-        .origin = .IGP,
-        .asPath = try as_path.clone(allocator),
-        .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-        .localPref = 100,
-        .atomicAggregate = false,
-        .multiExitDiscriminator = 0,
-        .aggregator = .{
+        .origin = .init(.IGP),
+        .asPath = .init(try as_path.clone(allocator)),
+        .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+        .localPref = .init(100),
+        .atomicAggregate = .init(false),
+        .multiExitDiscriminator = .init(0),
+        .aggregator = .init(.{
             .as = 65001,
             .address = ip.IpV4Address.parse("2.2.2.2") catch unreachable,
-        },
+        }),
     };
     defer attrs1.deinit();
 
@@ -438,7 +460,7 @@ test "PathAttributes hash and equal" {
     // Test differences
     var attrs3 = try attrs1.clone(allocator);
     defer attrs3.deinit();
-    attrs3.localPref = 200;
+    attrs3.localPref.value = 200;
     try std.testing.expect(!attrs1.equal(&attrs3));
 
     var hasher3 = std.hash.Wyhash.init(0);
@@ -448,13 +470,13 @@ test "PathAttributes hash and equal" {
     // Test ASPath difference
     var attrs4 = try attrs1.clone(allocator);
     defer attrs4.deinit();
-    attrs4.asPath.deinit();
+    attrs4.asPath.value.deinit();
     const new_seg = ASPathSegment{
         .allocator = allocator,
         .segType = .AS_Sequence,
         .contents = try allocator.dupe(u16, &[_]u16{ 1, 2, 4 }),
     };
-    attrs4.asPath = ASPath{
+    attrs4.asPath.value = ASPath{
         .allocator = allocator,
         .segments = try allocator.dupe(ASPathSegment, &[_]ASPathSegment{new_seg}),
     };

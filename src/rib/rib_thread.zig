@@ -350,16 +350,16 @@ test "Adj -> Main Updates Routes" {
     // Asserts
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 1);
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
-    try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref);
-    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref);
+    try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref.value);
+    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref.value);
 
     var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib);
     defer res.deinit(t.allocator);
 
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 1);
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
-    try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref);
-    try t.expectEqual(110, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref);
+    try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref.value);
+    try t.expectEqual(110, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref.value);
 }
 
 test "Main Rib Update" {
@@ -454,16 +454,16 @@ test "Main -> Adj Updates Routes" {
     // Asserts
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 1);
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
-    try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref);
-    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref);
+    try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref.value);
+    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref.value);
 
     var res = try syncFromMainToAdjOut(t.allocator, &adjRib, &mainRib);
     defer res.deinit(t.allocator);
 
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 1);
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
-    try t.expectEqual(100, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref);
-    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref);
+    try t.expectEqual(100, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref.value);
+    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref.value);
 }
 
 test "aggregateRouteUpdates grouping" {
@@ -474,10 +474,10 @@ test "aggregateRouteUpdates grouping" {
 
     const attrs1 = model.PathAttributes{
         .allocator = alloc,
-        .origin = .IGP,
-        .asPath = try asPath.clone(alloc),
-        .nexthop = ip.IpV4Address.init(1, 1, 1, 1),
-        .localPref = 100,
+        .origin = .init(.IGP),
+        .asPath = .init(try asPath.clone(alloc)),
+        .nexthop = .init(ip.IpV4Address.init(1, 1, 1, 1)),
+        .localPref = .init(100),
         .atomicAggregate = null,
         .multiExitDiscriminator = null,
         .aggregator = null,
@@ -486,10 +486,10 @@ test "aggregateRouteUpdates grouping" {
 
     const attrs2 = model.PathAttributes{
         .allocator = alloc,
-        .origin = .IGP,
-        .asPath = try asPath.clone(alloc),
-        .nexthop = ip.IpV4Address.init(2, 2, 2, 2),
-        .localPref = 100,
+        .origin = .init(.IGP),
+        .asPath = .init(try asPath.clone(alloc)),
+        .nexthop = .init(ip.IpV4Address.init(2, 2, 2, 2)),
+        .localPref = .init(100),
         .atomicAggregate = null,
         .multiExitDiscriminator = null,
         .aggregator = null,
@@ -538,10 +538,10 @@ test "filterSplitHorizon" {
 
     const attrs = model.PathAttributes{
         .allocator = alloc,
-        .origin = .IGP,
-        .asPath = try asPath.clone(alloc),
-        .nexthop = ip.IpV4Address.init(1, 1, 1, 1),
-        .localPref = 100,
+        .origin = .init(.IGP),
+        .asPath = .init(try asPath.clone(alloc)),
+        .nexthop = .init(ip.IpV4Address.init(1, 1, 1, 1)),
+        .localPref = .init(100),
         .atomicAggregate = null,
         .multiExitDiscriminator = null,
         .aggregator = null,

@@ -46,17 +46,17 @@ pub const RoutePath = struct {
     /// < 0 => self is less prefered than other
     /// = 0 => Tie
     pub fn cmp(self: *const Self, other: *const Self) i32 {
-        const lPrefComp = @as(i32, @intCast(self.attrs.localPref)) - @as(i32, @intCast(other.attrs.localPref));
+        const lPrefComp = @as(i32, @intCast(self.attrs.localPref.value)) - @as(i32, @intCast(other.attrs.localPref.value));
         if (lPrefComp != 0) {
             return lPrefComp;
         }
 
-        const asPathComp: i32 = @as(i32, @intCast(other.attrs.asPath.len())) - @as(i32, @intCast(self.attrs.asPath.len()));
+        const asPathComp: i32 = @as(i32, @intCast(other.attrs.asPath.value.len())) - @as(i32, @intCast(self.attrs.asPath.value.len()));
         if (asPathComp != 0) {
             return asPathComp;
         }
 
-        const originComp = @intFromEnum(other.attrs.origin) - @intFromEnum(self.attrs.origin);
+        const originComp = @intFromEnum(other.attrs.origin.value) - @intFromEnum(self.attrs.origin.value);
         if (originComp != 0) {
             return originComp;
         }
@@ -147,31 +147,31 @@ test "RoutePath.cmp local preference" {
         .advertiser = .self,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .origin = .IGP,
-            .asPath = ASPath.createEmpty(allocator),
-            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-            .localPref = 200,
-            .atomicAggregate = false,
+            .origin = .init(.IGP),
+            .asPath = .init(ASPath.createEmpty(allocator)),
+            .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+            .localPref = .init(200),
+            .atomicAggregate = .init(false),
             .multiExitDiscriminator = null,
             .aggregator = null,
         },
     };
-    defer path1.attrs.asPath.deinit();
+    defer path1.attrs.asPath.value.deinit();
 
     const path2 = RoutePath{
         .advertiser = .self,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .origin = .IGP,
-            .asPath = ASPath.createEmpty(allocator),
-            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-            .localPref = 100,
-            .atomicAggregate = false,
+            .origin = .init(.IGP),
+            .asPath = .init(ASPath.createEmpty(allocator)),
+            .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+            .localPref = .init(100),
+            .atomicAggregate = .init(false),
             .multiExitDiscriminator = null,
             .aggregator = null,
         },
     };
-    defer path2.attrs.asPath.deinit();
+    defer path2.attrs.asPath.value.deinit();
 
     try testing.expect(path1.cmp(&path2) > 0);
     try testing.expect(path2.cmp(&path1) < 0);
@@ -195,11 +195,11 @@ test "RoutePath.cmp AS path length" {
         .advertiser = .self,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .origin = .IGP,
-            .asPath = as_path_long,
-            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-            .localPref = 100,
-            .atomicAggregate = false,
+            .origin = .init(.IGP),
+            .asPath = .init(as_path_long),
+            .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+            .localPref = .init(100),
+            .atomicAggregate = .init(false),
             .multiExitDiscriminator = null,
             .aggregator = null,
         },
@@ -209,16 +209,16 @@ test "RoutePath.cmp AS path length" {
         .advertiser = .self,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .origin = .IGP,
-            .asPath = ASPath.createEmpty(allocator),
-            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-            .localPref = 100, // Equal localPref
-            .atomicAggregate = false,
+            .origin = .init(.IGP),
+            .asPath = .init(ASPath.createEmpty(allocator)),
+            .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+            .localPref = .init(100), // Equal localPref
+            .atomicAggregate = .init(false),
             .multiExitDiscriminator = null,
             .aggregator = null,
         },
     };
-    defer path_short.attrs.asPath.deinit();
+    defer path_short.attrs.asPath.value.deinit();
 
     try testing.expect(path_short.cmp(&path_long) > 0);
     try testing.expect(path_long.cmp(&path_short) < 0);
@@ -231,46 +231,46 @@ test "RoutePath.cmp origin preference" {
         .advertiser = .self,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .origin = .IGP,
-            .asPath = ASPath.createEmpty(allocator),
-            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-            .localPref = 100,
-            .atomicAggregate = false,
+            .origin = .init(.IGP),
+            .asPath = .init(ASPath.createEmpty(allocator)),
+            .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+            .localPref = .init(100),
+            .atomicAggregate = .init(false),
             .multiExitDiscriminator = null,
             .aggregator = null,
         },
     };
-    defer path_igp.attrs.asPath.deinit();
+    defer path_igp.attrs.asPath.value.deinit();
 
     const path_egp = RoutePath{
         .advertiser = .self,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .origin = .EGP,
-            .asPath = ASPath.createEmpty(allocator),
-            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-            .localPref = 100,
-            .atomicAggregate = false,
+            .origin = .init(.EGP),
+            .asPath = .init(ASPath.createEmpty(allocator)),
+            .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+            .localPref = .init(100),
+            .atomicAggregate = .init(false),
             .multiExitDiscriminator = null,
             .aggregator = null,
         },
     };
-    defer path_egp.attrs.asPath.deinit();
+    defer path_egp.attrs.asPath.value.deinit();
 
     const path_inc = RoutePath{
         .advertiser = .self,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .origin = .INCOMPLETE,
-            .asPath = ASPath.createEmpty(allocator),
-            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-            .localPref = 100,
-            .atomicAggregate = false,
+            .origin = .init(.INCOMPLETE),
+            .asPath = .init(ASPath.createEmpty(allocator)),
+            .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+            .localPref = .init(100),
+            .atomicAggregate = .init(false),
             .multiExitDiscriminator = null,
             .aggregator = null,
         },
     };
-    defer path_inc.attrs.asPath.deinit();
+    defer path_inc.attrs.asPath.value.deinit();
 
     // IGP > EGP > INCOMPLETE
     try testing.expect(path_igp.cmp(&path_egp) > 0);
@@ -285,31 +285,31 @@ test "RoutePath.cmp tie" {
         .advertiser = .self,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .origin = .IGP,
-            .asPath = ASPath.createEmpty(allocator),
-            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-            .localPref = 100,
-            .atomicAggregate = false,
+            .origin = .init(.IGP),
+            .asPath = .init(ASPath.createEmpty(allocator)),
+            .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+            .localPref = .init(100),
+            .atomicAggregate = .init(false),
             .multiExitDiscriminator = null,
             .aggregator = null,
         },
     };
-    defer path1.attrs.asPath.deinit();
+    defer path1.attrs.asPath.value.deinit();
 
     const path2 = RoutePath{
         .advertiser = .self,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .origin = .IGP,
-            .asPath = ASPath.createEmpty(allocator),
-            .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-            .localPref = 100,
-            .atomicAggregate = false,
+            .origin = .init(.IGP),
+            .asPath = .init(ASPath.createEmpty(allocator)),
+            .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+            .localPref = .init(100),
+            .atomicAggregate = .init(false),
             .multiExitDiscriminator = null,
             .aggregator = null,
         },
     };
-    defer path2.attrs.asPath.deinit();
+    defer path2.attrs.asPath.value.deinit();
 
     try testing.expectEqual(@as(i32, 0), path1.cmp(&path2));
 }
