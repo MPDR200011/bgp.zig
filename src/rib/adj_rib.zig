@@ -62,19 +62,19 @@ test "Add Route" {
 
     const route: Route = .default;
 
-    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = .createEmpty(testing.allocator), .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null });
+    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .init(.EGP), .asPath = .init(.createEmpty(testing.allocator)), .nexthop = .init(ip.IpV4Address.init(127, 0, 0, 1)), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null });
 
     const path = adjRib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
 
     const attrs: PathAttributes = path.attrs;
 
-    try testing.expectEqual(model.Origin.EGP, attrs.origin);
-    try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath.segments);
-    try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 1), attrs.nexthop);
+    try testing.expectEqual(model.Origin.EGP, attrs.origin.value);
+    try testing.expectEqualSlices(model.ASPathSegment, &[_]model.ASPathSegment{}, attrs.asPath.value.segments);
+    try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 1), attrs.nexthop.value);
 
-    try testing.expectEqual(100, attrs.localPref);
+    try testing.expectEqual(100, attrs.localPref.value);
 
-    try testing.expectEqual(false, attrs.atomicAggregate);
+    try testing.expectEqual(false, attrs.atomicAggregate.?.value);
     try testing.expectEqual(null, attrs.multiExitDiscriminator);
     try testing.expectEqual(null, attrs.aggregator);
 }
@@ -98,21 +98,21 @@ test "Set Route" {
     };
     defer asPath.deinit();
 
-    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null });
-    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 2), .localPref = 200, .atomicAggregate = true, .multiExitDiscriminator = 69420, .aggregator = null });
-    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = asPath, .nexthop = ip.IpV4Address.init(127, 0, 0, 3), .localPref = 142, .atomicAggregate = true, .multiExitDiscriminator = null, .aggregator = null });
+    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(ip.IpV4Address.init(127, 0, 0, 1)), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null });
+    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(ip.IpV4Address.init(127, 0, 0, 2)), .localPref = .init(200), .atomicAggregate = .init(true), .multiExitDiscriminator = .init(69420), .aggregator = null });
+    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(ip.IpV4Address.init(127, 0, 0, 3)), .localPref = .init(142), .atomicAggregate = .init(true), .multiExitDiscriminator = null, .aggregator = null });
 
     const path = adjRib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
 
     const attrs: PathAttributes = path.attrs;
 
-    try testing.expectEqual(model.Origin.EGP, attrs.origin);
-    try testing.expect(asPath.equal(&attrs.asPath));
-    try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 3), attrs.nexthop);
+    try testing.expectEqual(model.Origin.EGP, attrs.origin.value);
+    try testing.expect(asPath.equal(&attrs.asPath.value));
+    try testing.expectEqual(ip.IpV4Address.init(127, 0, 0, 3), attrs.nexthop.value);
 
-    try testing.expectEqual(142, attrs.localPref);
+    try testing.expectEqual(142, attrs.localPref.value);
 
-    try testing.expectEqual(true, attrs.atomicAggregate);
+    try testing.expectEqual(true, attrs.atomicAggregate.?.value);
     try testing.expectEqual(null, attrs.multiExitDiscriminator);
     try testing.expectEqual(null, attrs.aggregator);
 }
@@ -123,7 +123,7 @@ test "Remove Path" {
 
     const route: Route = .default;
 
-    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .EGP, .asPath = .createEmpty(testing.allocator), .nexthop = ip.IpV4Address.init(127, 0, 0, 1), .localPref = 100, .atomicAggregate = false, .multiExitDiscriminator = null, .aggregator = null });
+    try adjRib.setPath(route, .{ .neighbor = .{ .V4 = .init(127, 0, 0, 1) } }, .{ .allocator = testing.allocator, .origin = .init(.EGP), .asPath = .init(.createEmpty(testing.allocator)), .nexthop = .init(ip.IpV4Address.init(127, 0, 0, 1)), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null });
     adjRib.removePath(route);
 
     try testing.expectEqual(null, adjRib.prefixes.getPtr(route));

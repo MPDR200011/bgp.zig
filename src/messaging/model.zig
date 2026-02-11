@@ -208,7 +208,7 @@ pub const Aggregator = struct {
     as: u16,
     address: ip.IpV4Address,
 
-    pub fn equal(self: Self, other: Self) bool {
+    pub fn equal(self: *const Self, other: *const Self) bool {
         return self.as == other.as and self.address.equals(other.address);
     }
 
@@ -218,28 +218,76 @@ pub const Aggregator = struct {
     }
 };
 
+fn Attribute(comptime AttrType: type) type {
+    return struct {
+        const Self = @This();
+
+        // Flags
+        partial: bool,
+        transitive: bool,
+
+        // Value
+        value: AttrType,
+
+        pub fn init(value: AttrType) Self {
+            return Self{
+                .transitive = false,
+                .partial = false,
+                .value = value
+            };
+        }
+
+        pub fn isPartial(self: *const Self) bool {
+            return self.partial;
+        }
+    };
+}
+
+fn areOptionalAttrsEqual(comptime Type: type, attr1: ?Attribute(Type), attr2: ?Attribute(Type)) bool {
+    if (attr1) |a1| {
+        if (attr2) |a2| {
+            if (@typeInfo(Type) == .@"struct" and @hasDecl(Type, "equal")) {
+                if (!a1.value.equal(&a2.value)) {
+                    return false;
+                }
+            } else {
+                if (a1.value != a2.value) {
+                    return false;
+                }
+            }
+
+        }
+    } else {
+        if (attr2 != null) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 pub const PathAttributes = struct {
     const Self = @This();
 
     allocator: Allocator,
 
     // Well known, Mandatory
-    origin: Origin,
-    asPath: ASPath,
-    nexthop: ip.IpV4Address,
+    origin: Attribute(Origin),
+    asPath: Attribute(ASPath),
+    nexthop: Attribute(ip.IpV4Address),
 
     // Well known
     // Mandatory for internal peers or confeds
-    localPref: u32,
+    localPref: Attribute(u32),
 
     // Well known, discretionary
-    atomicAggregate: ?bool,
+    atomicAggregate: ?Attribute(bool),
 
     // Optional, non-transitive
-    multiExitDiscriminator: ?u32,
+    multiExitDiscriminator: ?Attribute(u32),
 
     // Optional, transitive
-    aggregator: ?Aggregator,
+    aggregator: ?Attribute(Aggregator),
 
     // TODO: track partial bit in recognised attrs
     // If a path with a recognized, transitive optional attribute is accepted
@@ -254,50 +302,58 @@ pub const PathAttributes = struct {
     // peers with the Partial bit in the Attribute Flags octet set to 1.
 
     pub fn deinit(self: Self) void {
-        self.asPath.deinit();
+        self.asPath.value.deinit();
     }
 
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
-        return Self{
+        var copy = Self{
             .allocator = allocator,
             .origin = self.origin,
-            .asPath = try self.asPath.clone(allocator),
+            .asPath = self.asPath,
             .nexthop = self.nexthop,
             .localPref = self.localPref,
             .atomicAggregate = self.atomicAggregate,
             .multiExitDiscriminator = self.multiExitDiscriminator,
             .aggregator = self.aggregator,
         };
+        copy.asPath.value = try self.asPath.value.clone(allocator);
+        return copy;
     }
 
     pub fn equal(self: *const Self, other: *const Self) bool {
-        if (self.origin != other.origin) return false;
-        if (!self.asPath.equal(&other.asPath)) return false;
-        if (!self.nexthop.equals(other.nexthop)) return false;
-        if (self.localPref != other.localPref) return false;
-        if (self.atomicAggregate != other.atomicAggregate) return false;
-        if (self.multiExitDiscriminator != other.multiExitDiscriminator) return false;
-        if (self.aggregator) |agg| {
-            if (other.aggregator) |otherAgg| {
-                return agg.equal(otherAgg);
-            }
+        if (self.origin.value != other.origin.value) return false;
+        if (!self.asPath.value.equal(&other.asPath.value)) return false;
+        if (!self.nexthop.value.equals(other.nexthop.value)) return false;
+        if (self.localPref.value != other.localPref.value) return false;
+
+        if (!areOptionalAttrsEqual(bool, self.atomicAggregate, other.atomicAggregate)) {
             return false;
-        } else {
-            return other.aggregator == null;
+        }
+
+        if (!areOptionalAttrsEqual(u32, self.multiExitDiscriminator, other.multiExitDiscriminator)) {
+            return false;
+        }
+
+        if (!areOptionalAttrsEqual(Aggregator, self.aggregator, other.aggregator)) {
+            return false;
         }
 
         return true;
     }
 
     pub fn hash(self: Self, hasher: anytype) void {
-        std.hash.autoHash(hasher, self.origin);
-        self.asPath.hash(hasher);
-        std.hash.autoHash(hasher, self.nexthop);
-        std.hash.autoHash(hasher, self.localPref);
-        std.hash.autoHash(hasher, self.atomicAggregate);
-        std.hash.autoHash(hasher, self.multiExitDiscriminator);
+        std.hash.autoHash(hasher, self.origin.value);
+        self.asPath.value.hash(hasher);
+        std.hash.autoHash(hasher, self.nexthop.value);
+        std.hash.autoHash(hasher, self.localPref.value);
+        if (self.atomicAggregate) |v| {
+            std.hash.autoHash(hasher, v.value);
+        }
+        if (self.multiExitDiscriminator) |v| {
+            std.hash.autoHash(hasher, v.value);
+        }
         if (self.aggregator) |agg| {
-            agg.hash(hasher);
+            agg.value.hash(hasher);
         }
     }
 };
@@ -381,16 +437,16 @@ test "PathAttributes hash and equal" {
 
     const attrs1 = PathAttributes{
         .allocator = allocator,
-        .origin = .IGP,
-        .asPath = try as_path.clone(allocator),
-        .nexthop = ip.IpV4Address.parse("1.1.1.1") catch unreachable,
-        .localPref = 100,
-        .atomicAggregate = false,
-        .multiExitDiscriminator = 0,
-        .aggregator = .{
+        .origin = .init(.IGP),
+        .asPath = .init(try as_path.clone(allocator)),
+        .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+        .localPref = .init(100),
+        .atomicAggregate = .init(false),
+        .multiExitDiscriminator = .init(0),
+        .aggregator = .init(.{
             .as = 65001,
             .address = ip.IpV4Address.parse("2.2.2.2") catch unreachable,
-        },
+        }),
     };
     defer attrs1.deinit();
 
@@ -412,7 +468,7 @@ test "PathAttributes hash and equal" {
     // Test differences
     var attrs3 = try attrs1.clone(allocator);
     defer attrs3.deinit();
-    attrs3.localPref = 200;
+    attrs3.localPref.value = 200;
     try std.testing.expect(!attrs1.equal(&attrs3));
 
     var hasher3 = std.hash.Wyhash.init(0);
@@ -422,13 +478,13 @@ test "PathAttributes hash and equal" {
     // Test ASPath difference
     var attrs4 = try attrs1.clone(allocator);
     defer attrs4.deinit();
-    attrs4.asPath.deinit();
+    attrs4.asPath.value.deinit();
     const new_seg = ASPathSegment{
         .allocator = allocator,
         .segType = .AS_Sequence,
         .contents = try allocator.dupe(u16, &[_]u16{ 1, 2, 4 }),
     };
-    attrs4.asPath = ASPath{
+    attrs4.asPath.value = ASPath{
         .allocator = allocator,
         .segments = try allocator.dupe(ASPathSegment, &[_]ASPathSegment{new_seg}),
     };
