@@ -305,29 +305,38 @@ pub const PathAttributes = struct {
 
         if (self.atomicAggregate) |at1| {
             if (other.atomicAggregate) |at2| {
-                return at1.value == at2.value;
+                if (at1.value != at2.value) {
+                    return false;
+                }
             }
-            return false;
         } else {
-            return other.atomicAggregate != null;
+            if (other.atomicAggregate != null) {
+                return false;
+            }
         }
 
         if (self.multiExitDiscriminator) |med1| {
             if (other.multiExitDiscriminator) |med2| {
-                return med1.value == med2.value;
+                if(med1.value != med2.value) {
+                    return false;
+                }
             }
-            return false;
         } else {
-            return other.multiExitDiscriminator != null;
+            if(other.multiExitDiscriminator != null) {
+                return false;
+            }
         }
 
         if (self.aggregator) |agg| {
             if (other.aggregator) |otherAgg| {
-                return agg.value.equal(otherAgg.value);
+                if (!agg.value.equal(otherAgg.value)) {
+                    return false;
+                }
             }
-            return false;
         } else {
-            return other.aggregator != null;
+            if (other.aggregator != null) {
+                return false;
+            }
         }
 
         return true;
