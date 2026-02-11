@@ -275,13 +275,16 @@ fn mainRibThread(ctx: RibThreadContext) !void {
         var aggregatedRoutes = try aggregateRouteUpdates(ctx.allocator, &filteredUpdates);
         defer aggregatedRoutes.deinit();
 
-        // FIXME: THIS SHIT IS STUPID
-        // FIXME: Don't send update back to neighbor that sent it to us in the first place
-        // const updateAttrs = &adjOut.*.?.adjRib.prefixes.getPtr(result.updatedRoutes[0]).?.attrs;
-        // peer.*.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, result.deletedRoutes, result.updatedRoutes, updateAttrs.*) });
+        // TODO: Message packaging, one message per prefix is naive
+        for (result.deletedRoutes) |deletedRoute| {
+            peer.*.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, &[_]model.Route{deletedRoute}, &[_]model.Route{}, null) });
+        }
+        for (result.updatedRoutes) |update| {
+            // TODO: overwrite the NEXT_HOP attr when sending
+            // Should set to the local address for the peer's session
+            peer.*.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, &[_]model.Route{}, &[_]model.Route{update.@"0"}, update.@"1") });
+        }
     }
-
-    // TODO: send out messages
 }
 
 const t = std.testing;

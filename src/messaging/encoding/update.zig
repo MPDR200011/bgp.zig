@@ -43,10 +43,12 @@ pub fn writeUpdateBody(msg: model.UpdateMessage, writer: *std.Io.Writer) !void {
     try writer.writeInt(u16, @intCast(calculateRoutesLength(msg.withdrawnRoutes)), .big);
     try writeRoutes(msg.withdrawnRoutes, writer);
 
-    try writer.writeInt(u16, @intCast(calculateAttributesLength(msg.pathAttributes)), .big);
-    try writeAttributes(msg.pathAttributes, writer);
+    if (msg.pathAttributes) |attrs| {
+        try writer.writeInt(u16, @intCast(calculateAttributesLength(attrs)), .big);
+        try writeAttributes(attrs, writer);
 
-    try writeRoutes(msg.advertisedRoutes, writer);
+        try writeRoutes(msg.advertisedRoutes, writer);
+    }
 }
 
 const testing = std.testing;

@@ -365,9 +365,14 @@ pub const UpdateMessage = struct {
 
     withdrawnRoutes: []const Route,
     advertisedRoutes: []const Route,
-    pathAttributes: PathAttributes,
+    pathAttributes: ?PathAttributes,
 
-    pub fn init(allocator: Allocator, withdrawnRoutes: []const Route, advertisedRoutes: []const Route, pathAttributes: PathAttributes) !Self {
+    pub fn init(allocator: Allocator, withdrawnRoutes: []const Route, advertisedRoutes: []const Route, pathAttributes: ?PathAttributes) !Self {
+        // If attributes is null, advertisedRoutes must be empty
+        std.debug.assert(pathAttributes != null or advertisedRoutes.len == 0);
+        std.debug.assert(pathAttributes == null or advertisedRoutes.len > 0);
+
+
         const wR = try allocator.alloc(Route, withdrawnRoutes.len);
         errdefer allocator.free(wR);
         std.mem.copyForwards(Route, wR, withdrawnRoutes);
@@ -380,14 +385,22 @@ pub const UpdateMessage = struct {
             .allocator = allocator,
             .withdrawnRoutes = wR,
             .advertisedRoutes = aR,
-            .pathAttributes = try pathAttributes.clone(pathAttributes.allocator),
+            .pathAttributes = attrs: { 
+                if (pathAttributes) |attrs| {
+                    break :attrs try attrs.clone(allocator);
+                } else {
+                    break :attrs null;
+                }
+            }
         };
     }
 
     pub fn deinit(self: *const Self) void {
         self.allocator.free(self.withdrawnRoutes);
         self.allocator.free(self.advertisedRoutes);
-        self.pathAttributes.deinit();
+        if (self.pathAttributes) |attrs| {
+            attrs.deinit();
+        }
     }
 };
 
