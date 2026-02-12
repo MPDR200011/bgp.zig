@@ -96,7 +96,7 @@ pub const Origin = enum(u8) {
     INCOMPLETE = 2,
 };
 
-pub const ASPathSegmentType = enum { AS_Set, AS_Sequence };
+pub const ASPathSegmentType = enum(u8) { AS_Set = 1, AS_Sequence = 2 };
 pub const ASPathSegment = struct {
     const Self = @This();
 
@@ -288,6 +288,8 @@ pub const PathAttributes = struct {
 
     // Optional, transitive
     aggregator: ?Attribute(Aggregator),
+
+    // TODO: For well-known attributes, the Transitive bit MUST be set to 1.
 
     // TODO: track partial bit in recognised attrs
     // If a path with a recognized, transitive optional attribute is accepted

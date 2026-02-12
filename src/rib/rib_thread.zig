@@ -281,6 +281,7 @@ fn mainRibThread(ctx: RibThreadContext) !void {
         }
         for (result.updatedRoutes) |update| {
             // TODO: overwrite the NEXT_HOP attr when sending
+            // TODO: ASN Prepend
             // Should set to the local address for the peer's session
             peer.*.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, &[_]model.Route{}, &[_]model.Route{update.@"0"}, update.@"1") });
         }
