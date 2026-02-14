@@ -20,6 +20,8 @@ const headerReader = @import("messaging/parsing/header.zig");
 const openReader = @import("messaging/parsing/open.zig");
 const bgpEncoding = @import("messaging/encoding/encoder.zig");
 
+const ribThread = @import("rib/rib_thread.zig");
+
 const Server = @import("accepter.zig");
 const PeerMap = @import("peer_map.zig").PeerMap;
 
@@ -130,7 +132,7 @@ pub fn main() !void {
     const processConfig = managedProcessConfig.value;
     const localPort = processConfig.localConfig.localPort orelse 179;
 
-    _ = try ribManager.RibManager.init(gpa);
+    var mainRib = try ribManager.RibManager.init(gpa);
 
     std.log.info("Initializing peer map", .{});
 
@@ -191,6 +193,16 @@ pub fn main() !void {
             return err;
         };
     }
+
+    std.log.info("Starting sync loop", .{});
+    var ribThreadScheduler: zul.Scheduler(ribThread.SyncTask, ribThread.RibThreadContext) = .init(gpa);
+    defer ribThreadScheduler.deinit();
+    try ribThreadScheduler.start(.{
+        .allocator = gpa,
+        .mainRib = &mainRib,
+        .peerMap = &peerMap,
+    });
+    try ribThreadScheduler.scheduleIn(.{}, 100);
 
     std.log.debug("Registering signals", .{});
 

@@ -1,13 +1,13 @@
 {
     "localConfig": {
         "asn": 65001,
-        "routerId": "192.168.1.2",
+        "routerId": "192.168.1.1",
         "localPort": 9001
     },
     "peers": [
         {
-            "localAddress": "192.168.1.2",
-            "peerAddress": "192.168.1.1",
+            "localAddress": "127.0.0.1",
+            "peerAddress": "127.0.0.1",
             "peerPort": 9002,
             "peeringMode": "PASSIVE",
             "delayOpen_s": 5

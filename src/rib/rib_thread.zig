@@ -1,4 +1,5 @@
 const std = @import("std");
+const zul = @import("zul");
 const ip = @import("ip");
 const adjRibManager = @import("adj_rib_manager.zig");
 const mainRibManager = @import("main_rib_manager.zig");
@@ -208,95 +209,117 @@ fn syncFromMainToAdjOut(alloc: Allocator, adjRib: *AdjRibOutManager, mainRib: *c
     return res;
 }
 
-const RibThreadContext = struct {
+pub const RibThreadContext = struct {
     allocator: Allocator,
     mainRib: *RibManager,
     peerMap: *PeerMap,
 };
 
-fn mainRibThread(ctx: RibThreadContext) !void {
-    ctx.mainRib.ribMutex.lock();
-    defer ctx.adjRib.ribMutex.unlock();
+pub const SyncTask = struct {
+    fn syncRibsAndUpdate(self: *const SyncTask, ctx: RibThreadContext, scheduler: *zul.Scheduler(SyncTask, RibThreadContext)) !void {
+        std.log.info("Running RIB Thread", .{});
+        _ = self;
+        ctx.mainRib.ribMutex.lock();
+        defer ctx.mainRib.ribMutex.unlock();
 
-    // sync adj-in -> main rib
-    var entryIt = ctx.peerMap.iterator();
-    while (entryIt.next()) |entry| {
-        const peer = entry.value_ptr.*;
-        // Lock the session to grab the adjIn reference
-        peer.session.mutex.lock();
-        if (peer.session.state != .ESTABLISHED) {
-            continue;
-        }
-
-        const adjIn = &peer.session.adjRibInManager.?;
-        adjIn.ribMutex.lock();
-        defer adjIn.ribMutex.unlock();
-
-        // Once we grab the adjIn and lock it we can unlock the session
-        // While the adjIn is locked the session can't terminate
-        peer.session.mutex.unlock();
-
-        const result = try syncFromAdjInToMain(ctx.allocator, adjIn, ctx.mainRib);
-        result.deinit(ctx.allocator);
-    }
-
-    // main rib best path selection
-    const updatedRoutes = try updateMainRib(ctx.allocator, ctx.mainRib);
-    defer updatedRoutes.deinit(ctx.allocator);
-
-    // sync main -> adj-out ribs
-    entryIt = ctx.peerMap.iterator();
-    while (entryIt.next()) |entry| {
-        const peer = entry.value_ptr.*;
-        const key = entry.key_ptr;
-
-        // Lock the session to grab the adjIn reference
-        peer.session.mutex.lock();
-        if (peer.session.state != .ESTABLISHED) {
-            continue;
-        }
-
-        const adjOut = &peer.session.adjRibOutManager.?;
-        adjOut.ribMutex.lock();
-        defer adjOut.ribMutex.unlock();
-
-        // Once we grab the adjOut and lock it we can unlock the session
-        // While the adjOut is locked the session can't terminate
-        peer.session.mutex.unlock();
-
-        const result = try syncFromMainToAdjOut(ctx.allocator, adjOut, ctx.mainRib);
-        defer result.deinit(ctx.allocator);
-
-        // Split Horizon: filter out routes that were advertised by this peer
-        var filteredUpdates = try filterSplitHorizon(ctx.allocator, adjOut.neighbor, result.updatedRoutes);
-        defer {
-            for (filteredUpdates.items) |*update| {
-                update.@"1".deinit();
+        // sync adj-in -> main rib
+        var entryIt = ctx.peerMap.iterator();
+        while (entryIt.next()) |entry| {
+            const peer = entry.value_ptr.*;
+            // Lock the session to grab the adjIn reference
+            peer.session.mutex.lock();
+            if (peer.session.state != .ESTABLISHED) {
+                peer.session.mutex.unlock();
+                continue;
             }
-            filteredUpdates.deinit(ctx.allocator);
+
+            const adjIn = &peer.session.adjRibInManager.?;
+            adjIn.ribMutex.lock();
+            defer adjIn.ribMutex.unlock();
+
+            // Once we grab the adjIn and lock it we can unlock the session
+            // While the adjIn is locked the session can't terminate
+            peer.session.mutex.unlock();
+
+            var result = try syncFromAdjInToMain(ctx.allocator, adjIn, ctx.mainRib);
+            result.deinit(ctx.allocator);
         }
 
-        var aggregatedRoutes = try aggregateRouteUpdates(ctx.allocator, &filteredUpdates);
-        defer aggregatedRoutes.deinit();
+        // main rib best path selection
+        var updatedRoutes = try updateMainRib(ctx.allocator, ctx.mainRib);
+        defer updatedRoutes.deinit(ctx.allocator);
 
-        // TODO: Message packaging, one message per prefix is naive
-        for (result.deletedRoutes) |deletedRoute| {
-            peer.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, &[_]model.Route{deletedRoute}, &[_]model.Route{}, null) });
-        }
-        for (result.updatedRoutes) |update| {
-            var attrs = update.@"1".clone(ctx.allocator);
-            attrs.nexthop.value = key.localAddress;
-            attrs.asPath.value.prependASN(peer.localAsn);
+        // sync main -> adj-out ribs
+        entryIt = ctx.peerMap.iterator();
+        while (entryIt.next()) |entry| {
+            const peer = entry.value_ptr.*;
+            const key = entry.key_ptr;
 
-            peer.session.sendMessage(.{ .UPDATE = .{ 
-                .allocator = ctx.allocator, 
-                .withdrawnRoutes = &[_]model.Route{}, 
-                .advertisedRoutes = &[_]model.Route{update.@"0"},
-                .pathAttributes = attrs 
-            } });
+            // Lock the session to grab the adjIn reference
+            peer.session.mutex.lock();
+            if (peer.session.state != .ESTABLISHED) {
+                peer.session.mutex.unlock();
+                continue;
+            }
+
+            const adjOut = &peer.session.adjRibOutManager.?;
+            adjOut.ribMutex.lock();
+            defer adjOut.ribMutex.unlock();
+
+            // Once we grab the adjOut and lock it we can unlock the session
+            // While the adjOut is locked the session can't terminate
+            peer.session.mutex.unlock();
+
+            var result = try syncFromMainToAdjOut(ctx.allocator, adjOut, ctx.mainRib);
+            defer result.deinit(ctx.allocator);
+
+            // Split Horizon: filter out routes that were advertised by this peer
+            var filteredUpdates = try filterSplitHorizon(ctx.allocator, adjOut.neighbor, result.updatedRoutes);
+            defer {
+                for (filteredUpdates.items) |*update| {
+                    update.@"1".deinit();
+                }
+                filteredUpdates.deinit(ctx.allocator);
+            }
+
+            var aggregatedRoutes = try aggregateRouteUpdates(ctx.allocator, &filteredUpdates);
+            defer aggregatedRoutes.deinit();
+
+            // TODO: Message packaging, one message per prefix is naive
+            for (result.deletedRoutes.items) |deletedRoute| {
+                try peer.session.sendMessage(.{ .UPDATE = .{ 
+                    .allocator = ctx.allocator,
+                    .withdrawnRoutes = &[_]model.Route{deletedRoute},
+                    .advertisedRoutes = &[_]model.Route{},
+                    .pathAttributes = null,
+                } });
+            }
+            for (result.updatedRoutes.items) |update| {
+                var attrs = try update.@"1".attrs.clone(ctx.allocator);
+                attrs.nexthop.value = key.localAddress;
+                try attrs.asPath.value.prependASN(peer.localAsn);
+
+                try peer.session.sendMessage(.{ .UPDATE = .{ 
+                    .allocator = ctx.allocator, 
+                    .withdrawnRoutes = &[_]model.Route{}, 
+                    .advertisedRoutes = &[_]model.Route{update.@"0"},
+                    .pathAttributes = attrs 
+                } });
+            }
         }
+
+        std.log.info("RIB Thread Complete", .{});
+        try scheduler.scheduleIn(.{}, std.time.ms_per_s * 30);
     }
-}
+
+    pub fn run(self: *const SyncTask, ctx: RibThreadContext, scheduler: *zul.Scheduler(SyncTask, RibThreadContext), at: i64) void {
+        _ = at;
+
+        self.syncRibsAndUpdate(ctx, scheduler) catch |err| {
+            std.log.err("Ribs sync run failed with error: {}", .{err});
+        };
+    }
+};
 
 const t = std.testing;
 
