@@ -218,6 +218,7 @@ pub const RibThreadContext = struct {
 
 pub const SyncTask = struct {
     fn syncRibsAndUpdate(self: *const SyncTask, ctx: RibThreadContext, scheduler: *zul.Scheduler(SyncTask, RibThreadContext)) !void {
+        std.log.info("Running RIB Thread", .{});
         _ = self;
         ctx.mainRib.ribMutex.lock();
         defer ctx.mainRib.ribMutex.unlock();
@@ -308,6 +309,7 @@ pub const SyncTask = struct {
             }
         }
 
+        std.log.info("RIB Thread Complete", .{});
         try scheduler.scheduleIn(.{}, std.time.ms_per_s * 30);
     }
 
