@@ -198,7 +198,6 @@ pub fn main() !void {
     var ribThreadScheduler: zul.Scheduler(ribThread.SyncTask, ribThread.RibThreadContext) = .init(gpa);
     defer ribThreadScheduler.deinit();
     try ribThreadScheduler.start(.{
-        .scheduler = ribThreadScheduler,
         .allocator = gpa,
         .mainRib = &mainRib,
         .peerMap = &peerMap,

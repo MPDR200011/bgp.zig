@@ -210,7 +210,6 @@ fn syncFromMainToAdjOut(alloc: Allocator, adjRib: *AdjRibOutManager, mainRib: *c
 }
 
 pub const RibThreadContext = struct {
-    scheduler: zul.Scheduler(SyncTask, RibThreadContext),
     allocator: Allocator,
     mainRib: *RibManager,
     peerMap: *PeerMap,
