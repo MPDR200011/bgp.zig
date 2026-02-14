@@ -439,7 +439,7 @@ pub const Session = struct {
         }
 
         for (msg.advertisedRoutes) |route| {
-            try self.adjRibInManager.?.setPath(route, msg.pathAttributes);
+            try self.adjRibInManager.?.setPath(route, msg.pathAttributes.?);
         }
     }
 };
