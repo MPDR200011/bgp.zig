@@ -219,21 +219,22 @@ fn mainRibThread(ctx: RibThreadContext) !void {
     defer ctx.adjRib.ribMutex.unlock();
 
     // sync adj-in -> main rib
-    var peerIt = ctx.peerMap.valueIterator();
-    while (peerIt.next()) |peer| {
+    var entryIt = ctx.peerMap.iterator();
+    while (entryIt.next()) |entry| {
+        const peer = entry.value_ptr.*;
         // Lock the session to grab the adjIn reference
-        peer.*.session.mutex.lock();
-        if (peer.*.session.state != .ESTABLISHED) {
+        peer.session.mutex.lock();
+        if (peer.session.state != .ESTABLISHED) {
             continue;
         }
 
-        const adjIn = &peer.*.session.adjRibInManager.?;
+        const adjIn = &peer.session.adjRibInManager.?;
         adjIn.ribMutex.lock();
         defer adjIn.ribMutex.unlock();
 
         // Once we grab the adjIn and lock it we can unlock the session
         // While the adjIn is locked the session can't terminate
-        peer.*.session.mutex.unlock();
+        peer.session.mutex.unlock();
 
         const result = try syncFromAdjInToMain(ctx.allocator, adjIn, ctx.mainRib);
         result.deinit(ctx.allocator);
@@ -244,21 +245,24 @@ fn mainRibThread(ctx: RibThreadContext) !void {
     defer updatedRoutes.deinit(ctx.allocator);
 
     // sync main -> adj-out ribs
-    peerIt = ctx.peerMap.valueIterator();
-    while (peerIt.next()) |peer| {
+    entryIt = ctx.peerMap.iterator();
+    while (entryIt.next()) |entry| {
+        const peer = entry.value_ptr.*;
+        const key = entry.key_ptr;
+
         // Lock the session to grab the adjIn reference
-        peer.*.session.mutex.lock();
-        if (peer.*.session.state != .ESTABLISHED) {
+        peer.session.mutex.lock();
+        if (peer.session.state != .ESTABLISHED) {
             continue;
         }
 
-        const adjOut = &peer.*.session.adjRibOutManager.?;
+        const adjOut = &peer.session.adjRibOutManager.?;
         adjOut.ribMutex.lock();
         defer adjOut.ribMutex.unlock();
 
         // Once we grab the adjOut and lock it we can unlock the session
         // While the adjOut is locked the session can't terminate
-        peer.*.session.mutex.unlock();
+        peer.session.mutex.unlock();
 
         const result = try syncFromMainToAdjOut(ctx.allocator, adjOut, ctx.mainRib);
         defer result.deinit(ctx.allocator);
@@ -280,10 +284,16 @@ fn mainRibThread(ctx: RibThreadContext) !void {
             peer.*.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, &[_]model.Route{deletedRoute}, &[_]model.Route{}, null) });
         }
         for (result.updatedRoutes) |update| {
-            // TODO: overwrite the NEXT_HOP attr when sending
-            // TODO: ASN Prepend
-            // Should set to the local address for the peer's session
-            peer.*.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, &[_]model.Route{}, &[_]model.Route{update.@"0"}, update.@"1") });
+            var attrs = update.@"1".clone(ctx.allocator);
+            attrs.nexthop.value = key.localAddress;
+            attrs.asPath.value.prependASN(peer.localAsn);
+
+            peer.*.session.sendMessage(.{ .UPDATE = .{ 
+                .allocator = ctx.allocator, 
+                .withdrawnRoutes = &[_]model.Route{}, 
+                .advertisedRoutes = &[_]model.Route{update.@"0"},
+                .pathAttributes = attrs 
+            } });
         }
     }
 }
