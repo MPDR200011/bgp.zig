@@ -195,15 +195,15 @@ pub fn main() !void {
     }
 
     std.log.info("Starting sync loop", .{});
-    var scheduler: zul.Scheduler(ribThread.SyncTask, ribThread.RibThreadContext) = .init(gpa);
-    defer scheduler.deinit();
-    try scheduler.start(.{
-        .scheduler = scheduler,
+    var ribThreadScheduler: zul.Scheduler(ribThread.SyncTask, ribThread.RibThreadContext) = .init(gpa);
+    defer ribThreadScheduler.deinit();
+    try ribThreadScheduler.start(.{
+        .scheduler = ribThreadScheduler,
         .allocator = gpa,
         .mainRib = &mainRib,
         .peerMap = &peerMap,
     });
-    try scheduler.scheduleIn(.{}, 100);
+    try ribThreadScheduler.scheduleIn(.{}, 100);
 
     std.log.debug("Registering signals", .{});
 
