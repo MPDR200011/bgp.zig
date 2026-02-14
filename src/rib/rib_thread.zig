@@ -281,14 +281,14 @@ fn mainRibThread(ctx: RibThreadContext) !void {
 
         // TODO: Message packaging, one message per prefix is naive
         for (result.deletedRoutes) |deletedRoute| {
-            peer.*.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, &[_]model.Route{deletedRoute}, &[_]model.Route{}, null) });
+            peer.session.sendMessage(.{ .UPDATE = .init(ctx.allocator, &[_]model.Route{deletedRoute}, &[_]model.Route{}, null) });
         }
         for (result.updatedRoutes) |update| {
             var attrs = update.@"1".clone(ctx.allocator);
             attrs.nexthop.value = key.localAddress;
             attrs.asPath.value.prependASN(peer.localAsn);
 
-            peer.*.session.sendMessage(.{ .UPDATE = .{ 
+            peer.session.sendMessage(.{ .UPDATE = .{ 
                 .allocator = ctx.allocator, 
                 .withdrawnRoutes = &[_]model.Route{}, 
                 .advertisedRoutes = &[_]model.Route{update.@"0"},
