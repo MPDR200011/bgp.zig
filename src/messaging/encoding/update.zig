@@ -27,26 +27,61 @@ fn writeRoutes(routes: []const model.Route, writer: *std.Io.Writer) !void {
     }
 }
 
-fn calculateAttributesLength(attrs: PathAttributes) usize {
-    // FIXME complete dis
-    _ = attrs;
-    return 0;
+fn calculateAttributesLength(attrs: *const PathAttributes) usize {
+    var result: usize = 0;
+
+    // Origin 
+    result += 2 + 1;
+
+    // AS Path
+    result += 2;
+    for (attrs.asPath.value.segments) |segment| {
+        // Segment Type + Segment length
+        result += 2;
+        result += segment.contents.len * 2;
+    }
+
+    // Nexthop
+    result += 4; // IPv4 Address size
+
+    return result;
 }
 
-fn writeAttributes(attrs: PathAttributes, writer: *std.Io.Writer) !void {
-    // FIXME complete dis
-    _ = attrs;
-    _ = writer;
+fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
+    // TODO: write attribute flags
+
+    // Origin
+    try writer.writeInt(u8, 0, .big);
+    try writer.writeInt(u8, 1, .big);
+    try writer.writeInt(u8, @intFromEnum(attrs.origin.value), .big);
+
+    // AS Path
+    try writer.writeInt(u8, 0, .big);
+    try writer.writeInt(u8, 2, .big);
+    for (attrs.asPath.value.segments) |segment| {
+        try writer.writeInt(u8, @intFromEnum(segment.segType), .big);
+        try writer.writeInt(u8, @intCast(segment.contents.len), .big);
+        for (segment.contents) |asn| {
+            try writer.writeInt(u16, asn, .big);
+        }
+    }
+
+    // Nexthop
+    try writer.writeInt(u8, 0, .big);
+    try writer.writeInt(u8, 3, .big);
+    try writer.writeAll(&attrs.nexthop.value.address);
 }
 
 pub fn writeUpdateBody(msg: model.UpdateMessage, writer: *std.Io.Writer) !void {
     try writer.writeInt(u16, @intCast(calculateRoutesLength(msg.withdrawnRoutes)), .big);
     try writeRoutes(msg.withdrawnRoutes, writer);
 
-    try writer.writeInt(u16, @intCast(calculateAttributesLength(msg.pathAttributes)), .big);
-    try writeAttributes(msg.pathAttributes, writer);
+    if (msg.pathAttributes) |*attrs| {
+        try writer.writeInt(u16, @intCast(calculateAttributesLength(attrs)), .big);
+        try writeAttributes(attrs, writer);
 
-    try writeRoutes(msg.advertisedRoutes, writer);
+        try writeRoutes(msg.advertisedRoutes, writer);
+    }
 }
 
 const testing = std.testing;
@@ -112,10 +147,16 @@ test "writeRoutes()" {
 }
 
 test "writeUpdateBody()" {
-    const asPath: AsPath = .{
-        .allocator = testing.allocator,
-        .segments = try testing.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{})
+    const asPath = asPathInit: {
+        const referencePath: AsPath = .{
+            .allocator = testing.allocator,
+            .segments = &[_]model.ASPathSegment{
+                .{.allocator = testing.allocator, .segType = .AS_Set, .contents = &[_]u16{69}}
+            },
+        };
+        break :asPathInit try referencePath.clone(testing.allocator);
     };
+    defer asPath.deinit();
 
     const msg = try model.UpdateMessage.init(
         testing.allocator, 
@@ -150,7 +191,13 @@ test "writeUpdateBody()" {
         16, 0xff, 0xff, 
         12, 0, 0xff, 
         // Attrs
-        0, 0,
+        0, 9+4, 
+        // -- Origin
+        0, 1, 1,
+        // -- As Path
+        0, 2, 1, 1, 0, 69,
+        // -- Next hop
+        0, 3, 0, 0, 0, 0, 
         // Adv
         32, 127, 0, 42, 69, 
         31, 127, 0, 42, 69 
