@@ -43,11 +43,13 @@ pub const MessageReader = struct {
             .OPEN => .{ .OPEN = try openReader.readOpenMessage(stream)},
             .KEEPALIVE => .{ .KEEPALIVE = .{} },
             .NOTIFICATION => .{ .NOTIFICATION = try notificationReader.readNotificationMessage(stream, messageLength, self.allocator) },
-            .UPDATE => .{ .UPDATE = try (updateReader.UpdateMsgParser{
-                .allocator = self.allocator,
-                .reader = stream
-            }).readUpdateMessage(messageLength)
-        },
+            .UPDATE => update: {
+                var parser = updateReader.UpdateMsgParser{
+                    .allocator = self.allocator,
+                    .reader = stream
+                };
+                break :update .{ .UPDATE = try parser.readUpdateMessage(messageLength) };
+            },
         };
 
     }

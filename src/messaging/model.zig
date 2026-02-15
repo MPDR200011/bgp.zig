@@ -263,27 +263,41 @@ pub const Aggregator = struct {
     }
 };
 
-fn Attribute(comptime AttrType: type) type {
+pub const ATTR_OPTIONAL_FLAG: u8 = 0x80;
+pub const ATTR_TRANSITIVE_FLAG: u8 = 0x40;
+pub const ATTR_PARTIAL_FLAG: u8 = 0x20;
+pub const ATTR_EXTENDED_LENGTH_FLAG: u8 = 0x10;
+pub fn Attribute(comptime AttrType: type) type {
     return struct {
         const Self = @This();
 
         // Flags
-        partial: bool,
-        transitive: bool,
+        flags: u8,
 
         // Value
         value: AttrType,
 
         pub fn init(value: AttrType) Self {
             return Self{
-                .transitive = false,
-                .partial = false,
+                .flags = 0x00,
                 .value = value
             };
         }
 
+        pub fn isOptional(self: *const Self) bool {
+            return (self.flags & ATTR_OPTIONAL_FLAG) > 0;
+        }
+
+        pub fn isTransitive(self: *const Self) bool {
+            return (self.flags & ATTR_TRANSITIVE_FLAG) > 0;
+        }
+
+        pub fn isExtendedLength(self: *const Self) bool {
+            return (self.flags & ATTR_EXTENDED_LENGTH_FLAG) > 0;
+        }   
+
         pub fn isPartial(self: *const Self) bool {
-            return self.partial;
+            return (self.flags & ATTR_PARTIAL_FLAG) > 0;
         }
     };
 }
@@ -346,6 +360,17 @@ pub const PathAttributes = struct {
     // and passed to other BGP peers, then the unrecognized transitive optional
     // attribute of that path MUST be passed, along with the path, to other BGP
     // peers with the Partial bit in the Attribute Flags octet set to 1.
+
+    pub const empty: Self = .{
+        .allocator = undefined,
+        .origin = undefined,
+        .asPath = undefined,
+        .nexthop = undefined,
+        .localPref = .init(100),
+        .atomicAggregate = null,
+        .multiExitDiscriminator = null,
+        .aggregator = null,
+    };
 
     pub fn deinit(self: Self) void {
         self.asPath.value.deinit();
@@ -430,13 +455,13 @@ pub const UpdateMessage = struct {
             .allocator = allocator,
             .withdrawnRoutes = wR,
             .advertisedRoutes = aR,
-            .pathAttributes = attrs: { 
+            .pathAttributes = attrs: {
                 if (pathAttributes) |attrs| {
                     break :attrs try attrs.clone(allocator);
                 } else {
                     break :attrs null;
                 }
-            }
+            },
         };
     }
 

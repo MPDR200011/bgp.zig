@@ -50,6 +50,7 @@ fn calculateAttributesLength(attrs: *const PathAttributes) usize {
 fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
     // TODO: write attribute flags
 
+    // FIXME: missing attribute length
     // Origin
     try writer.writeInt(u8, 0, .big);
     try writer.writeInt(u8, 1, .big);
