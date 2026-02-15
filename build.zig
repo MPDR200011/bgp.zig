@@ -87,7 +87,7 @@ pub fn build(b: *std.Build) void {
     };
 
     const exes = [_]ExeSpec{
-        .{ .name = "zig-bgp", .root_source_file = "src/main.zig", .cmd = "run", .desc = "Run main binary" },
+        .{ .name = "bgpz", .root_source_file = "src/main.zig", .cmd = "run", .desc = "Run main binary" },
         .{ .name = "scheduled_task", .root_source_file = "example_exes/test_timer.zig", .cmd = "test_sched_task", .desc = "Run Scheduled Task Example Binary" },
         .{ .name = "debounced_task", .root_source_file = "example_exes/test_debounce.zig", .cmd = "test_debounced_task", .desc = "Run Debounced Task Example Binary" },
     };
