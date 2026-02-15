@@ -27,38 +27,55 @@ fn writeRoutes(routes: []const model.Route, writer: *std.Io.Writer) !void {
     }
 }
 
-fn calculateAttributesLength(attrs: *const PathAttributes) usize {
+fn calculateASPathByteLength(asPath: *const AsPath) usize {
     var result: usize = 0;
-
-    // Origin 
-    result += 2 + 1;
-
-    // AS Path
-    result += 2;
-    for (attrs.asPath.value.segments) |segment| {
+    for (asPath.segments) |segment| {
         // Segment Type + Segment length
         result += 2;
         result += segment.contents.len * 2;
     }
+    return result;
+}
 
-    // Nexthop
-    result += 4; // IPv4 Address size
+fn calculateAttributesLength(attrs: *const PathAttributes) usize {
+    var result: usize = 0;
+
+    // Origin: Flags(1) + Type(1) + Len(1) + Val(1)
+    result += 4;
+
+    // AS Path: Flags(1) + Type(1) + Len(1 or 2) + Data
+    const asPathDataLen = calculateASPathByteLength(&attrs.asPath.value);
+    result += 2; // Flags + Type
+    result += if (asPathDataLen > 255) @as(usize, 2) else @as(usize, 1); // Length field
+    result += asPathDataLen;
+
+    // Nexthop: Flags(1) + Type(1) + Len(1) + Val(4)
+    result += 7;
 
     return result;
 }
 
 fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
-    // TODO: write attribute flags
-
-    // FIXME: missing attribute length
     // Origin
-    try writer.writeInt(u8, 0, .big);
+    try writer.writeInt(u8, attrs.origin.flags, .big);
+    try writer.writeInt(u8, 1, .big);
     try writer.writeInt(u8, 1, .big);
     try writer.writeInt(u8, @intFromEnum(attrs.origin.value), .big);
 
     // AS Path
-    try writer.writeInt(u8, 0, .big);
+    const asPathDataLen = calculateASPathByteLength(&attrs.asPath.value);
+    const isExtendedLen = asPathDataLen > 255;
+    if (isExtendedLen) {
+        try writer.writeInt(u8, attrs.asPath.flags | model.ATTR_EXTENDED_LENGTH_FLAG, .big);
+    } else {
+        try writer.writeInt(u8, attrs.asPath.flags, .big);
+    }
     try writer.writeInt(u8, 2, .big);
+    if (isExtendedLen) {
+        try writer.writeInt(u16, @intCast(asPathDataLen), .big);
+    } else {
+        try writer.writeInt(u8, @intCast(asPathDataLen), .big);
+    }
     for (attrs.asPath.value.segments) |segment| {
         try writer.writeInt(u8, @intFromEnum(segment.segType), .big);
         try writer.writeInt(u8, @intCast(segment.contents.len), .big);
@@ -68,8 +85,9 @@ fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
     }
 
     // Nexthop
-    try writer.writeInt(u8, 0, .big);
+    try writer.writeInt(u8, attrs.nexthop.flags, .big);
     try writer.writeInt(u8, 3, .big);
+    try writer.writeInt(u8, 4, .big);
     try writer.writeAll(&attrs.nexthop.value.address);
 }
 
@@ -181,7 +199,16 @@ test "writeUpdateBody()" {
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
         }, 
-        PathAttributes{.allocator = testing.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(ip.IpV4Address.init(0, 0, 0, 0)), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null},
+        PathAttributes{
+            .allocator = testing.allocator, 
+            .origin = .{ .flags = model.ATTR_TRANSITIVE_FLAG, .value = .EGP }, 
+            .asPath = .{ .flags = model.ATTR_TRANSITIVE_FLAG, .value = asPath }, 
+            .nexthop = .{ .flags = model.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) }, 
+            .localPref = .init(100), 
+            .atomicAggregate = .init(false), 
+            .multiExitDiscriminator = null, 
+            .aggregator = null
+        },
     );
     defer msg.deinit();
 
@@ -192,13 +219,13 @@ test "writeUpdateBody()" {
         16, 0xff, 0xff, 
         12, 0, 0xff, 
         // Attrs
-        0, 9+4, 
-        // -- Origin
-        0, 1, 1,
-        // -- As Path
-        0, 2, 1, 1, 0, 69,
-        // -- Next hop
-        0, 3, 0, 0, 0, 0, 
+        0, 4 + 7 + 7, 
+        // -- Origin (Flags:0x40, Type:1, Len:1, Val:1)
+        0x40, 1, 1, 1,
+        // -- As Path (Flags:0x40, Type:2, Len:4, Val: [AS_SET, 1 ASN, 69])
+        0x40, 2, 4, 1, 1, 0, 69,
+        // -- Next hop (Flags:0x40, Type:3, Len:4, Val: 0.0.0.0)
+        0x40, 3, 4, 0, 0, 0, 0, 
         // Adv
         32, 127, 0, 42, 69, 
         31, 127, 0, 42, 69 
