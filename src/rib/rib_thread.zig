@@ -104,7 +104,7 @@ fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibInManager, mainRib
     // Check for dropped routes
     var mainIt = mainRib.rib.prefixes.iterator();
     while (mainIt.next()) |mainEntry| {
-        // TODO: AS Path Loop detection
+        // FIXME: AS Path Loop detection
 
         // Check if route has path from this neighbor
         if (!mainEntry.value_ptr.paths.contains(.{ .neighbor = adjRib.neighbor })) {

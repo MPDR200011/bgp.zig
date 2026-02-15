@@ -56,6 +56,8 @@ fn calculateAttributesLength(attrs: *const PathAttributes) usize {
 }
 
 fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
+    // TODO: For well-known attributes, the Transitive bit MUST be set to 1.
+
     // Origin
     try writer.writeInt(u8, attrs.origin.flags, .big);
     try writer.writeInt(u8, 1, .big);

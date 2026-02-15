@@ -347,8 +347,6 @@ pub const PathAttributes = struct {
     // Optional, transitive
     aggregator: ?Attribute(Aggregator),
 
-    // TODO: For well-known attributes, the Transitive bit MUST be set to 1.
-
     // TODO: track partial bit in recognised attrs
     // If a path with a recognized, transitive optional attribute is accepted
     // and passed along to other BGP peers and the Partial bit in the Attribute
