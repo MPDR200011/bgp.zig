@@ -1,12 +1,15 @@
 import logging
-import logging
-from ipaddress import ip_interface
+import ipaddress as ip
 from dataclasses import dataclass
 import typing as t
 import docker
 from abc import ABC, abstractmethod
 from docker.models.containers import Container
 from docker.models.images import Image
+from docker.models.networks import Network
+from pyre_extensions import none_throws
+
+IpInterface = ip.IPv4Interface | ip.IPv6Interface
 
 class NodeImage(ABC):
     @abstractmethod
@@ -26,7 +29,7 @@ class DockerImage(NodeImage):
 class DockerfileImage(NodeImage):
     context_path: str
     dockerfile_path: str
-    build_args: str
+    build_args: t.Dict[str, str]
 
     def __init__(self, context_path: str, dockerfile_path: t.Optional[str], build_args: t.Dict[str, str]):
         super().__init__();
@@ -52,7 +55,7 @@ class LocalDockerDriver:
         self.api_client = docker.APIClient(base_url='unix:///var/run/docker.sock')
         self.node_to_container_map = {}
         self.topology = topology
-        self.network = None
+        self.network = self.client.networks.create(name=f'{self.topology.name}.net')
 
     def _run_container(self, image: Image, name: str) -> Container:
         logging.info(f"Starting container: {name}")
@@ -73,7 +76,7 @@ class LocalDockerDriver:
 
         container = self._run_container(image, node.name)
 
-        self.node_to_container_map[node.name] = container.id
+        self.node_to_container_map[node.name] = none_throws(container.id)
 
     def _stop_node(self, node: Node):
         if node.name not in self.node_to_container_map:
@@ -87,8 +90,8 @@ class LocalDockerDriver:
         local_container = self.client.containers.get(self.node_to_container_map[local_interface.node.name])
         remote_container = self.client.containers.get(self.node_to_container_map[remote_interface.node.name])
 
-        local_details = self.api_client.inspect_container(local_container.id)
-        remote_details = self.api_client.inspect_container(remote_container.id)
+        local_details = self.api_client.inspect_container(none_throws(local_container.id))
+        remote_details = self.api_client.inspect_container(none_throws(remote_container.id))
 
         tunnel_name = f'{local_interface.name}'
         remote_address = remote_details['NetworkSettings']['Networks'][self.network.name]['IPAddress']
@@ -107,7 +110,6 @@ class LocalDockerDriver:
 
     def start(self):
         logging.info("Starting topology")
-        self.network = self.client.networks.create(name=f'{self.topology.name}.net')
         for node in self.topology.nodes.values():
             self._start_node(node)
 
@@ -128,7 +130,7 @@ class Node:
 class Interface:
     name: str
     node: Node
-    address: ip_interface
+    address: IpInterface
 
 @dataclass
 class Link:
@@ -144,9 +146,9 @@ class Topology:
     def link_nodes(
         self,
         a_node: str,
-        a_intf: ip_interface,
+        a_intf: IpInterface,
         z_node: str,
-        z_intf: ip_interface,
+        z_intf: IpInterface,
     ):
         self.links.append(Link(
             a = Interface(
@@ -185,9 +187,9 @@ def main():
     )
     topology.link_nodes(
         a_node='bird1',
-        a_intf=ip_interface(address='192.168.0.2/30'),
+        a_intf=ip.ip_interface(address='192.168.0.2/30'),
         z_node='bird2',
-        z_intf=ip_interface(address='192.168.0.3/30'),
+        z_intf=ip.ip_interface(address='192.168.0.3/30'),
     )
     driver = LocalDockerDriver(topology=topology)
 
