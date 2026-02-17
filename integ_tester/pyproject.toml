@@ -8,3 +8,9 @@ dependencies = [
     "docker>=7.1.0",
     "pyre-extensions>=0.0.32",
 ]
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
