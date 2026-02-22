@@ -1,167 +1,51 @@
+from cluster_manager.drivers.docker.driver import LocalDockerDriver
+from cluster_manager.configuration.models import Node
+from cluster_manager.configuration.models import Topology
+from cluster_manager.configuration.models import DockerImage
 import logging
+import click
 import ipaddress as ip
-from dataclasses import dataclass
-import typing as t
-import docker
-from abc import ABC, abstractmethod
-from docker.models.containers import Container
-from docker.models.images import Image
-from docker.models.networks import Network
-from pyre_extensions import none_throws
 
-IpInterface = ip.IPv4Interface | ip.IPv6Interface
+bird_image = DockerImage(image_name='bird-docker')
 
-class NodeImage(ABC):
-    @abstractmethod
-    def prepare_image(self, client: docker.DockerClient) -> Image:
-        pass
+topology = Topology(
+    name="test-topo",
+    nodes={
+        'bird1': Node(
+            image=bird_image,
+            name='bird1'
+        ),
+        'bird2': Node(
+            image=bird_image,
+            name='bird2'
+        ),
+    },
+    links=[]
+)
+topology.link_nodes(
+    a_node='bird1',
+    a_intf=ip.ip_interface(address='192.168.0.2/30'),
+    z_node='bird2',
+    z_intf=ip.ip_interface(address='192.168.0.3/30'),
+)
 
-class DockerImage(NodeImage):
-    image_name: str
+@click.group()
+def main_command():
+    pass
 
-    def __init__(self, image_name: str):
-        self.image_name = image_name
+@click.command
+def start_cluster():
+    driver = LocalDockerDriver(topology=topology)
+    driver.start()
 
-    @t.override
-    def prepare_image(self, client: docker.DockerClient) -> Image:
-        return client.images.get(self.image_name)
+@click.command
+def stop_cluster():
+    driver = LocalDockerDriver(topology=topology)
+    driver.stop()
 
-class DockerfileImage(NodeImage):
-    context_path: str
-    dockerfile_path: str
-    build_args: t.Dict[str, str]
-
-    def __init__(self, context_path: str, dockerfile_path: t.Optional[str], build_args: t.Dict[str, str]):
-        super().__init__();
-
-        self.context_path = context_path
-        self.dockerfile_path = dockerfile_path or f'{self.context_path}/Dockerfile'
-        self.build_args = build_args
-
-    @t.override
-    def prepare_image(self, client: docker.DockerClient) -> Image:
-        image, build_logs = client.images.build(path=self.context_path, dockerfile=self.dockerfile_path, buildargs=self.build_args)
-        return image
-
-class LocalDockerDriver:
-    client: docker.DockerClient
-    node_to_container_map: t.Dict[str, str]
-
-    network: Network
-    topology: Topology
-
-    def __init__(self, topology: Topology):
-        self.client = docker.DockerClient(base_url='unix:///var/run/docker.sock')
-        self.api_client = docker.APIClient(base_url='unix:///var/run/docker.sock')
-        self.node_to_container_map = {}
-        self.topology = topology
-        self.network = self.client.networks.create(name=f'{self.topology.name}.net')
-
-    def _run_container(self, image: Image, name: str) -> Container:
-        logging.info(f"Starting container: {name}")
-        container: Container = self.client.containers.run(
-            image, 
-            name=name, 
-            command="tail -f /dev/null",
-            detach=True,
-            network=self.network.name,
-            privileged=True,
-        )
-        return container
-
-    def _start_node(self, node: Node):
-        logging.info(f"Starting node: {node.name}")
-
-        image = node.image.prepare_image(self.client)
-
-        container = self._run_container(image, node.name)
-
-        self.node_to_container_map[node.name] = none_throws(container.id)
-
-    def _stop_node(self, node: Node):
-        if node.name not in self.node_to_container_map:
-            return
-
-        container = self.client.containers.get(node.name)
-        container.stop()
-        container.remove()
-
-    def _setup_gre(self, local_interface: Interface, remote_interface: Interface):
-        local_container = self.client.containers.get(self.node_to_container_map[local_interface.node.name])
-        remote_container = self.client.containers.get(self.node_to_container_map[remote_interface.node.name])
-
-        local_details = self.api_client.inspect_container(none_throws(local_container.id))
-        remote_details = self.api_client.inspect_container(none_throws(remote_container.id))
-
-        tunnel_name = f'{local_interface.name}'
-        remote_address = remote_details['NetworkSettings']['Networks'][self.network.name]['IPAddress']
-        local_address = local_details['NetworkSettings']['Networks'][self.network.name]['IPAddress']
-
-        command = f'ip tunnel add {tunnel_name} mode gre remote {remote_address} local {local_address} ttl 255'
-        logging.debug(command)
-        result = local_container.exec_run(command)
-
-        print(result.output)
-
-    def _setup_link(self, link: Link):
-        logging.info(f'Linking nodes {link.a.node.name}<->{link.z.node.name}')
-        self._setup_gre(link.a, link.z)
-        self._setup_gre(link.z, link.a)
-
-    def start(self):
-        logging.info("Starting topology")
-        for node in self.topology.nodes.values():
-            self._start_node(node)
-
-        for link in self.topology.links:
-            self._setup_link(link)
-
-    def stop(self):
-        for node in self.topology.nodes.values():
-            self._stop_node(node)
-        self.network.remove()
-
-@dataclass
-class Node:
-    image: NodeImage
-    name: str
-
-@dataclass
-class Interface:
-    name: str
-    node: Node
-    address: IpInterface
-
-@dataclass
-class Link:
-    a: Interface
-    z: Interface
-
-@dataclass
-class Topology:
-    name: str
-    nodes: t.Dict[str, Node]
-    links: t.List[Link]
-
-    def link_nodes(
-        self,
-        a_node: str,
-        a_intf: IpInterface,
-        z_node: str,
-        z_intf: IpInterface,
-    ):
-        self.links.append(Link(
-            a = Interface(
-                name=f'{a_node}{z_node}',
-                node=self.nodes[a_node],
-                address=a_intf,
-            ),
-            z = Interface(
-                name=f'{z_node}{a_node}',
-                node=self.nodes[z_node],
-                address=z_intf,
-            ),
-        ))
+def build_cli():
+    main_command.add_command(start_cluster)
+    main_command.add_command(stop_cluster)
 
 def main():
     logging.basicConfig(
@@ -169,38 +53,6 @@ def main():
     )
     logging.info("Starting")
 
-    bird_image = DockerImage(image_name='bird-docker')
-    
-    topology = Topology(
-        name="test-topo",
-        nodes={
-            'bird1': Node(
-                image=bird_image,
-                name='bird1'
-            ),
-            'bird2': Node(
-                image=bird_image,
-                name='bird2'
-            ),
-        },
-        links=[]
-    )
-    topology.link_nodes(
-        a_node='bird1',
-        a_intf=ip.ip_interface(address='192.168.0.2/30'),
-        z_node='bird2',
-        z_intf=ip.ip_interface(address='192.168.0.3/30'),
-    )
-    driver = LocalDockerDriver(topology=topology)
+    build_cli()
+    main_command()
 
-    try:
-        driver.start()
-        logging.info("Finished setting up")
-        logging.info("Stopping")
-        driver.stop()
-    except Exception as e:
-        logging.exception(e)
-        driver.stop()
-
-if __name__ == "__main__":
-    main()
