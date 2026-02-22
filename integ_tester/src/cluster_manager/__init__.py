@@ -35,12 +35,12 @@ def main_command():
 
 @click.command
 def start_cluster():
-    driver = LocalDockerDriver(topology=topology)
-    driver.start()
+    driver = LocalDockerDriver()
+    driver.start(topology)
 
 @click.command
 def stop_cluster():
-    driver = LocalDockerDriver(topology=topology)
+    driver = LocalDockerDriver()
     driver.stop()
 
 def build_cli():
