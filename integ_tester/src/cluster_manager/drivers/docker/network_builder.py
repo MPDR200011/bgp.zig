@@ -1,4 +1,11 @@
+from cluster_manager.drivers.docker.local_network_spec import LocalNodeInfo
+from cluster_manager.drivers.docker.local_network_spec import LocalNetworkInfo
+from cluster_manager.drivers.docker.local_network_spec import LocalDockerNetworkSpec
+from cluster_manager.drivers.docker.local_network_spec import SPEC_TYPE
+from cluster_manager.drivers.running_network_spec import Spec
 import logging
+import string
+import random
 import typing as t
 
 from docker import APIClient, DockerClient
@@ -9,6 +16,9 @@ from pyre_extensions import none_throws
 
 from cluster_manager.configuration.models import Interface, Link, Node, Topology
 
+def get_random_string(length: int) -> str:
+    result_str = ''.join(random.choice(string.ascii_lowercase) for i in range(length))
+    return result_str
 
 class LocalNetworkBuilder:
     client: DockerClient
@@ -26,14 +36,28 @@ class LocalNetworkBuilder:
         self.node_to_container_map = {}
 
         self.topology = topology
-        self.network = self.client.networks.create(name=f'{self.topology.name}.net')
+        self.network = self.client.networks.create(name=f'{get_random_string(5)}-{self.topology.name}.net')
 
-    def start_network(self):
+    def start_network(self) -> Spec:
         for node in self.topology.nodes.values():
             self._start_node(node)
 
         for link in self.topology.links:
             self._setup_link(link)
+
+        return Spec(
+            driver_type=SPEC_TYPE,
+            spec_data=LocalDockerNetworkSpec(
+                network=LocalNetworkInfo(
+                    network_name=none_throws(self.network.name),
+                    network_id=none_throws(self.network.id)
+                ),
+                nodes=[LocalNodeInfo(
+                    node_name=item[0],
+                    container_id=item[1]
+                ) for item in self.node_to_container_map.items()],
+            )
+        )
 
     def _run_container(self, image: Image, name: str) -> Container:
         logging.info(f"Starting container: {name}")

@@ -10,6 +10,7 @@ requires-python = ">=3.14"
 dependencies = [
     "click>=8.3.1",
     "docker>=7.1.0",
+    "pydantic>=2.12.5",
     "pyre-extensions>=0.0.32",
     "pyrefly>=0.53.0",
 ]

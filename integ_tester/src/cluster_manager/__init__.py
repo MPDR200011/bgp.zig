@@ -1,3 +1,6 @@
+from cluster_manager.drivers.docker.local_network_spec import LocalDockerNetworkSpec
+from cluster_manager.drivers.docker.local_network_spec import SPEC_TYPE
+from cluster_manager.drivers.running_network_spec import Spec
 from cluster_manager.drivers.docker.driver import LocalDockerDriver
 from cluster_manager.configuration.models import Node
 from cluster_manager.configuration.models import Topology
@@ -36,12 +39,23 @@ def main_command():
 @click.command
 def start_cluster():
     driver = LocalDockerDriver()
-    driver.start(topology)
+    spec = driver.start(topology)
+
+    with open('/tmp/network_spec.json', 'w') as f:
+        f.write(spec.model_dump_json())
 
 @click.command
 def stop_cluster():
+    with open('/tmp/network_spec.json') as f:
+        spec = Spec.model_validate_json(f.read())
+
+    if spec.driver_type != SPEC_TYPE:
+        raise ValueError(f'wrong driver type: {spec.driver_type}')
+
+    specific_spec = LocalDockerNetworkSpec.model_validate(spec.spec_data)
+
     driver = LocalDockerDriver()
-    driver.stop()
+    driver.stop(specific_spec)
 
 def build_cli():
     main_command.add_command(start_cluster)
