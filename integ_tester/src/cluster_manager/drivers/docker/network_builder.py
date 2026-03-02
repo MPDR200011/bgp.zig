@@ -1,3 +1,5 @@
+import logging
+import os
 from cluster_manager.drivers.docker.local_network_spec import LocalNodeInfo
 from cluster_manager.drivers.docker.local_network_spec import LocalNetworkInfo
 from cluster_manager.drivers.docker.local_network_spec import LocalDockerNetworkSpec
@@ -59,12 +61,17 @@ class LocalNetworkBuilder:
             )
         )
 
+    @staticmethod
+    def get_container_volume_location(container_name: str) -> str:
+        return f'/tmp/integ-tester/containers/{container_name}'
+
     def _run_container(self, image: Image, name: str) -> Container:
         logging.info(f"Starting container: {name}")
+        
         container: Container = self.client.containers.run(
             image, 
+            command=['tail', '-f', '/dev/null'],
             name=name, 
-            command="tail -f /dev/null",
             detach=True,
             network=self.network.name,
             privileged=True,
@@ -99,10 +106,18 @@ class LocalNetworkBuilder:
         remote_address = remote_details['NetworkSettings']['Networks'][self.network.name]['IPAddress']
         local_address = local_details['NetworkSettings']['Networks'][self.network.name]['IPAddress']
 
+        logging.debug(f"{tunnel_name}: creating")
         command = f'ip tunnel add {tunnel_name} mode gre remote {remote_address} local {local_address} ttl 255'
         logging.debug(command)
         result = local_container.exec_run(command)
+        print(result.output)
 
+        logging.debug(f"{tunnel_name}: assigning address")
+        result = local_container.exec_run(f'ip addr add {local_interface.address} dev {tunnel_name}')
+        print(result.output)
+
+        logging.debug(f"{tunnel_name}: assigning setting up")
+        result = local_container.exec_run(f'ip link set {tunnel_name} up')
         print(result.output)
 
     def _setup_link(self, link: Link):
