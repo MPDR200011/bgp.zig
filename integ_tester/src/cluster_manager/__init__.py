@@ -30,9 +30,9 @@ topology = Topology(
 )
 topology.link_nodes(
     a_node='bird1',
-    a_intf=ip.ip_interface(address='192.168.0.2/30'),
+    a_intf=ip.ip_interface(address='192.168.0.1/30'),
     z_node='bird2',
-    z_intf=ip.ip_interface(address='192.168.0.3/30'),
+    z_intf=ip.ip_interface(address='192.168.0.2/30'),
 )
 
 @click.group()
