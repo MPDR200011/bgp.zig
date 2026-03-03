@@ -1,33 +1,14 @@
-from docker.models.images import Image
-from docker import DockerClient
-import docker
-import ipaddress as ip
+from typing import List
+from typing import Type
+from typing import Dict
 from abc import abstractmethod
-import abc
+import ipaddress as ip
 import typing as t
 from dataclasses import dataclass
 
+from cluster_manager.configuration.nodes import Node
+
 IpInterface = ip.IPv4Interface | ip.IPv6Interface
-
-class NodeImage(abc.ABC):
-    @abstractmethod
-    def prepare_image(self, client: DockerClient) -> Image:
-        pass
-
-class DockerImage(NodeImage):
-    image_name: str
-
-    def __init__(self, image_name: str):
-        self.image_name = image_name
-
-    @t.override
-    def prepare_image(self, client: docker.DockerClient) -> Image:
-        return client.images.get(self.image_name)
-
-@dataclass
-class Node:
-    image: NodeImage
-    name: str
 
 @dataclass
 class Interface:
@@ -65,3 +46,19 @@ class Topology:
                 address=z_intf,
             ),
         ))
+
+
+class TestingConfiguration:
+
+    _node_types: Dict[str, Type[Node]]
+
+    def __init__(self, node_types: List[Type[Node]]):
+        self._node_types = {
+            nt.__name__: nt for nt in node_types
+        }
+
+    @property
+    @abstractmethod
+    def topology(self) -> Topology:
+        raise NotImplementedError()
+

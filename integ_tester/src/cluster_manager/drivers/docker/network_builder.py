@@ -81,7 +81,7 @@ class LocalNetworkBuilder:
     def _start_node(self, node: Node):
         logging.info(f"Starting node: {node.name}")
 
-        image = node.image.prepare_image(self.client)
+        image = self.client.images.get(node.image_name)
 
         container = self._run_container(image, node.name)
 

@@ -1,3 +1,4 @@
+from cluster_manager.configuration.concrete.my_config import MyTestingConfiguration
 import logging
 import traceback
 from pathlib import Path
@@ -5,35 +6,8 @@ from cluster_manager.drivers.docker.local_network_spec import LocalDockerNetwork
 from cluster_manager.drivers.docker.local_network_spec import SPEC_TYPE
 from cluster_manager.drivers.running_network_spec import Spec
 from cluster_manager.drivers.docker.driver import LocalDockerDriver
-from cluster_manager.configuration.models import Node
-from cluster_manager.configuration.models import Topology
-from cluster_manager.configuration.models import DockerImage
-import logging
 import click
-import ipaddress as ip
 
-bird_image = DockerImage(image_name='bird-docker')
-
-topology = Topology(
-    name="test-topo",
-    nodes={
-        'bird1': Node(
-            image=bird_image,
-            name='bird1'
-        ),
-        'bird2': Node(
-            image=bird_image,
-            name='bird2'
-        ),
-    },
-    links=[]
-)
-topology.link_nodes(
-    a_node='bird1',
-    a_intf=ip.ip_interface(address='192.168.0.1/30'),
-    z_node='bird2',
-    z_intf=ip.ip_interface(address='192.168.0.2/30'),
-)
 
 @click.group()
 def main_command():
@@ -41,9 +15,10 @@ def main_command():
 
 @click.command
 @click.option('--project-root', default='.')
-def start_cluster(project_root):
+def start_cluster(project_root: str):
+    config = MyTestingConfiguration(project_root)
     driver = LocalDockerDriver(project_root=Path(project_root))
-    spec = driver.standup_infra(topology)
+    spec = driver.standup_infra(config.topology)
     try:
         driver.start_nodes(spec)
 

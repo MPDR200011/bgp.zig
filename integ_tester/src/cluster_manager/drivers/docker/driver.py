@@ -1,3 +1,7 @@
+from docker.models.containers import ExecResult
+from typing import List
+from typing import override
+from cluster_manager.drivers.base import DriverContainer
 from tarfile import TarInfo
 from pyre_extensions import none_throws
 from pathlib import Path
@@ -17,13 +21,12 @@ from cluster_manager.drivers.running_network_spec import Spec
 
 
 @dataclass
-class LocalContainer:
+class LocalContainer(DriverContainer):
     client: docker.DockerClient
-
     container: Container
-
     mount_location: Path
 
+    @override
     def install_file(self, location: Path, contents_stream: io.IOBase):
         stream = io.BytesIO()
         with tarfile.open(fileobj=stream, mode='w|') as tar:
@@ -34,6 +37,11 @@ class LocalContainer:
             tar.addfile(info, all_contents)
 
         self.container.put_archive(location.parent.as_posix(), stream.getvalue())
+
+    @override
+    def run_cmd(self, cmd: str | List[str], wait: bool = True) -> ExecResult:
+        return self.container.exec_run(cmd, detach=not wait)
+
 
 class LocalDockerDriver(BaseDriver):
     client: docker.DockerClient
@@ -68,9 +76,9 @@ class LocalDockerDriver(BaseDriver):
                     Path('/etc/bird/bird.conf'),
                     f
                 )
-                result = local_container.container.exec_run(
+                result = local_container.run_cmd(
                     cmd='bird',
-                    detach=False,
+                    wait=True,
                 )
                 print(result.output)
 
