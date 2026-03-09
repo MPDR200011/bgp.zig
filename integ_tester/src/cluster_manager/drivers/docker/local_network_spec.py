@@ -1,8 +1,6 @@
 from typing import List
 from pydantic import BaseModel
 
-SPEC_TYPE = "LocalNetworkType"
-
 class LocalNetworkInfo(BaseModel):
     network_name: str
     network_id: str

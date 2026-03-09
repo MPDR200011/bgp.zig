@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "pyre-extensions>=0.0.32",
     "pyrefly>=0.53.0",
+    "python-dotenv>=1.2.2",
 ]
 
 [tool.pyrefly]

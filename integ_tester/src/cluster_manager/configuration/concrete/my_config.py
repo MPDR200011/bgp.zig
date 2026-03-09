@@ -1,52 +1,63 @@
+from typing import Dict
+from pyre_extensions import JSON
+from typing import Type
 import io
-from pathlib import Path
-from cluster_manager.drivers.base import DriverContainer
-from cluster_manager.configuration.models import Topology
-from typing import override
 import ipaddress as ip
-from cluster_manager.configuration.nodes import Node
-from cluster_manager.configuration.models import TestingConfiguration
+import os
+from pathlib import Path
+from typing import List, Mapping, override
 
-class BirdNode(Node):
-    config_dir: Path
+from cluster_manager.configuration.models import (
+    Node,
+    Service,
+    TestingConfiguration,
+    Topology,
+)
 
-    def __init__(self, name: str, config_dir: Path):
-        super().__init__('bird-docker', name)
-        self.config_dir = config_dir
+
+class BirdService(Service):
+    def __init__(self, node: Node):
+        super().__init__(node)
 
     @override
-    def setup(self, container: DriverContainer):
-        with io.open(self.config_dir / f'{self.name}.cfg', mode='rb') as f:
-            container.install_file(
-                Path('/etc/bird/bird.conf'),
-                f
-            )
-            result = container.run_cmd(
-                cmd='bird',
-                wait=False,
-            )
-            print(result.output)
+    @classmethod
+    def match_node(cls, node: Node) -> bool:
+        return node.get('type') == 'bird'
+
+    @override
+    def get_files(self) -> Mapping[str, io.IOBase]:
+        project_root = os.environ['PROJECT_ROOT']
+
+        bird_config_dir = Path(project_root) / 'test_configs' / 'bird' / f'{self.node.name}.cfg'
+        with io.open(bird_config_dir, mode='rb') as f:
+            return {
+                '/etc/bird/bird.conf': io.BytesIO(f.read())
+            }
+
+    @override
+    def get_start_command(self) -> str | List[str]:
+        return ['bird']
 
 class MyTestingConfiguration(TestingConfiguration):
     _topology: Topology
 
-    def __init__(self, project_root: str):
-        super().__init__([
-            BirdNode
-        ])
-
-        bird_config_dir = Path(project_root) / 'test_configs' / 'bird'
-
+    def __init__(self):
         topology = Topology(
             name="test-topo",
             nodes={
-                'bird1': BirdNode(
+                'bird1': Node(
+                    image_name='bird-docker',
                     name='bird1',
-                    config_dir=bird_config_dir
+                    data={
+                        'type': 'bird'
+                    },
                 ),
-                'bird2': BirdNode(
+                'bird2': Node(
+                    image_name='bird-docker',
                     name='bird2',
-                    config_dir=bird_config_dir
+                    data={
+                        'type': 'bird'
+                    }
                 ),
             },
             links=[]
@@ -61,6 +72,20 @@ class MyTestingConfiguration(TestingConfiguration):
         self._topology = topology
 
     @override
+    def get_services(self) -> List[Type[Service]]:
+        return [
+            BirdService
+        ]
+
+    @override
     @property
     def topology(self) -> Topology:
         return self._topology
+
+    @override
+    def deserialize(cls, data: Dict[str, JSON]) -> TestingConfiguration:
+        return MyTestingConfiguration()
+
+    @override
+    def serialize(self) -> Dict[str, JSON]:
+        return { }
