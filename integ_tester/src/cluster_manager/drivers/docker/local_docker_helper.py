@@ -1,3 +1,4 @@
+from docker.models.containers import ExecResult
 import logging
 import logging
 import traceback
@@ -73,3 +74,13 @@ class LocalDockerHelper(BaseHelper):
         logging.info(f'Tearing down network {local_network.network.name}')
 
         LocalNetworkBuilder.teardown_network(local_network)
+
+    def run_command_in_node(self, data: DriverData, node_name: str, command: str) -> ExecResult:
+        local_network = self._parse_driver_data(data)
+        container = local_network.containers[node_name]
+
+        return container.exec_run(
+            command,
+            stream=True
+        )
+

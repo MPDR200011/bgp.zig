@@ -1,5 +1,4 @@
 import logging
-import logging
 import traceback
 from pathlib import Path
 
@@ -40,8 +39,8 @@ def start_cluster():
 
                 start_command = service_instance.get_start_command()
                 result = driver.run_cmd(node, start_command, wait=False)
-                # if result.exit_code != 0:
-                #     raise RuntimeError(f'fail to run command in node {node.name}: {start_command}\n{result.output}')
+                if result.exit_code != 0:
+                    raise RuntimeError(f'fail to run command in node {node.name}: {start_command}\n{result.output}')
 
         spec = Spec(
             # test_config=config,
@@ -60,10 +59,21 @@ def stop_cluster():
 
     LocalDockerHelper().teardown_network(spec.driver_data)
 
+@click.command
+@click.argument('node_name')
+@click.argument('command')
+def exec_in_node(node_name: str, command: str):
+    with open('/tmp/network_spec.json') as f:
+        spec = Spec.model_validate_json(f.read())
+
+    result = LocalDockerHelper().run_command_in_node(spec.driver_data, node_name, command)
+    for chunk in result.output:
+        click.echo(chunk, nl=False)
 
 def build_cli():
     main_command.add_command(start_cluster)
     main_command.add_command(stop_cluster)
+    main_command.add_command(exec_in_node)
 
 def main():
     load_dotenv()

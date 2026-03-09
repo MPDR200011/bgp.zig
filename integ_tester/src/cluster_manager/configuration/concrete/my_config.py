@@ -92,7 +92,7 @@ class MyTestingConfiguration(TestingConfiguration):
                 ),
                 'bgpz1': Node(
                     image_name='bgpz-docker',
-                    name='bgpz1',
+                    name='bgpz',
                     data={
                         'type': 'bgpz'
                     }
@@ -109,13 +109,13 @@ class MyTestingConfiguration(TestingConfiguration):
         topology.link_nodes(
             a_node='bird1',
             a_intf=ip.ip_interface(address='192.168.1.1/30'),
-            z_node='bgpz1',
+            z_node='bgpz',
             z_intf=ip.ip_interface(address='192.168.1.2/30'),
         )
         topology.link_nodes(
             a_node='bird2',
             a_intf=ip.ip_interface(address='192.168.2.1/30'),
-            z_node='bgpz1',
+            z_node='bgpz',
             z_intf=ip.ip_interface(address='192.168.2.2/30'),
         )
 
