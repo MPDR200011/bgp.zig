@@ -41,7 +41,7 @@ class BirdService(Service):
 START_UP_SCRIPT="""
 #!/bin/bash
 
-bgpz -c /etc/bgpz/bgpz.json 2>&1 1>/tmp/bgp.log
+bgpz -c /etc/bgpz/bgpz.json 1>/tmp/bgp.log 2>&1 
 """
 
 class BgpzService(Service):
