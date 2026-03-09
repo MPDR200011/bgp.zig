@@ -46,7 +46,7 @@ fn takeIntoRoute(self: *Self, route: *Route) !u16 {
         bitsToRead -= 8;
     }
 
-    return (prefixByteLength + 1);
+    return (prefixByteLength + 1); // prefix length + length filed
 }
 
 fn readRoutes(self: *Self, routesLength: u16) !std.array_list.Managed(Route) {
