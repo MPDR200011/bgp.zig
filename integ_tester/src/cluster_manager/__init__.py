@@ -1,4 +1,5 @@
 import logging
+import logging
 import traceback
 from pathlib import Path
 
@@ -34,10 +35,13 @@ def start_cluster():
 
                 files_to_install = service_instance.get_files()
                 for path, contents in files_to_install.items():
+                    logging.info(f'Installing file {path} in node {node.name}')
                     driver.install_file(node, Path(path), contents)
 
-                result = driver.run_cmd(node, service_instance.get_start_command(), wait=True)
-                print(result.output)
+                start_command = service_instance.get_start_command()
+                result = driver.run_cmd(node, start_command, wait=True)
+                if result.exit_code != 0:
+                    raise RuntimeError(f'fail to run command in node {node.name}: {start_command}\n{result.output}')
 
         spec = Spec(
             # test_config=config,

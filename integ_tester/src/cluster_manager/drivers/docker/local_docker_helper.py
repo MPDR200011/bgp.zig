@@ -1,4 +1,5 @@
 import logging
+import logging
 import traceback
 
 from docker import APIClient, DockerClient
@@ -69,4 +70,6 @@ class LocalDockerHelper(BaseHelper):
 
     def teardown_network(self, data: DriverData):
         local_network = self._parse_driver_data(data)
+        logging.info(f'Tearing down network {local_network.network.name}')
+
         LocalNetworkBuilder.teardown_network(local_network)

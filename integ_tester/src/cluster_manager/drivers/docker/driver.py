@@ -44,12 +44,15 @@ class LocalDockerDriver(BaseDriver):
 
             info = TarInfo(name=location.name)
             info.size = len(all_contents.getbuffer())
+            info.mode = int('755', base=8)
             tar.addfile(info, all_contents)
 
-        container.put_archive(location.parent.as_posix(), stream.getvalue())
+        if not container.put_archive(location.parent.as_posix(), stream.getvalue()):
+            raise RuntimeError(f'Failed to instal file {location.as_posix()}')
 
     @override
     def run_cmd(self, node: Node, cmd: str | List[str], wait: bool = True) -> ExecResult:
         container = self.network.containers[node.name]
+
         return container.exec_run(cmd, detach=not wait)
 

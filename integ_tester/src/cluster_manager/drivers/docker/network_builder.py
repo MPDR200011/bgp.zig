@@ -1,3 +1,4 @@
+import logging
 import traceback
 import logging
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ class LocalNetworkBuilder:
     @staticmethod
     def teardown_network(network: LocalNetwork):
         for container in network.containers.values():
+            logging.info(f'Stopping container {container.name}')
             container.stop()
             container.remove()
 
