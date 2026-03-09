@@ -201,7 +201,7 @@ fn syncFromMainToAdjOut(alloc: Allocator, adjRib: *AdjRibOutManager, mainRib: *c
     var mainIt = mainRib.rib.prefixes.iterator();
     while (mainIt.next()) |ribEntry| {
         const bestPath = ribEntry.value_ptr.paths.get(ribEntry.value_ptr.bestPath.?).?;
-        try adjRib.setPath(ribEntry.key_ptr.*, ribEntry.value_ptr.bestPath.?, bestPath.attrs);
+        try adjRib.adjRib.setPath(ribEntry.key_ptr.*, ribEntry.value_ptr.bestPath.?, bestPath.attrs);
 
         try res.updatedRoutes.append(alloc, .{ ribEntry.key_ptr.*, try bestPath.clone(alloc) });
     }
