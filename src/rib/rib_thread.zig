@@ -299,6 +299,7 @@ pub const SyncTask = struct {
                 attrs.nexthop.value = key.localAddress;
                 try attrs.asPath.value.prependASN(peer.localAsn);
 
+                std.log.info("Sending update", .{});
                 try peer.session.sendMessage(.{ .UPDATE = .{ 
                     .allocator = ctx.allocator, 
                     .withdrawnRoutes = &[_]model.Route{}, 

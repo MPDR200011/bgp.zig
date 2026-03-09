@@ -112,6 +112,12 @@ class MyTestingConfiguration(TestingConfiguration):
             z_node='bgpz1',
             z_intf=ip.ip_interface(address='192.168.1.2/30'),
         )
+        topology.link_nodes(
+            a_node='bird2',
+            a_intf=ip.ip_interface(address='192.168.2.1/30'),
+            z_node='bgpz1',
+            z_intf=ip.ip_interface(address='192.168.2.2/30'),
+        )
 
         self._topology = topology
 
