@@ -9,8 +9,10 @@ const UpdateParsingError = error{
 RoutesLengthInconsistent, 
 AttributesLengthInconsistent, 
 InvalidPrefixLength, 
-MissingMandatoryAttribute, 
 ASPAthAttrLengthInconsistent,
+MissingOriginAttribute, 
+MissingASPathAttribute,
+MissingNexthopAttribute
 };
 
 pub const UpdateMsgParser = @This();
@@ -154,8 +156,14 @@ fn readAttributes(self: *Self, attributesLength: u16) !PathAttributes {
         bytesToRead -= attributeLength; // For the attribute value
     }
 
-    if (!originRead or !nextHopRead or !asPathRead) {
-        return UpdateParsingError.MissingMandatoryAttribute;
+    if (!originRead) {
+        return UpdateParsingError.MissingOriginAttribute;
+    }
+    if (!asPathRead) {
+        return UpdateParsingError.MissingASPathAttribute;
+    }
+    if (!nextHopRead) {
+        return UpdateParsingError.MissingNexthopAttribute;
     }
 
     if (bytesToRead != 0) {

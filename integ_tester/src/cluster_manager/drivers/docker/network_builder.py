@@ -85,6 +85,7 @@ class LocalNetworkBuilder:
             detach=True,
             network=network.name,
             privileged=True,
+            init=True
         )
         return container
 

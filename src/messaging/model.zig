@@ -202,6 +202,8 @@ pub const ASPath = struct {
     }
 
     pub fn prependASN(self: *Self, asn: u16) !void {
+        // FIXME: Missing overflow protection (prevent segment length from
+        // going over 255)
         if (self.segments.len == 0) {
             const newSegments = try self.allocator.alloc(ASPathSegment, 1);
 

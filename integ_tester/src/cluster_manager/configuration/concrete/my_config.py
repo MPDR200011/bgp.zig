@@ -38,6 +38,12 @@ class BirdService(Service):
     def get_start_command(self) -> str | List[str]:
         return ['bird']
 
+START_UP_SCRIPT="""
+#!/bin/bash
+
+bgpz -c /etc/bgpz/bgpz.json 2>&1 1>/tmp/bgp.log
+"""
+
 class BgpzService(Service):
     def __init__(self, node: Node):
         super().__init__(node)
@@ -55,16 +61,13 @@ class BgpzService(Service):
         with io.open(bird_config_dir, mode='rb') as f:
             return {
                 '/etc/bgpz/bgpz.json': io.BytesIO(f.read()),
-                '/usr/bin/start-bgp': io.BytesIO("""
-                #!/bin/bash
-
-                bgpz -c /etc/bgpz/bgpz.json > /tmp/bgp.log
-                """.encode())
+                '/usr/bin/start-bgp': io.BytesIO(START_UP_SCRIPT.encode())
             }
 
     @override
     def get_start_command(self) -> str | List[str]:
-        return 'cat /usr/bin/start-bgp'
+        return 'bash -c /usr/bin/start-bgp'
+        # return 'cat /usr/bin/start-bgp'
 
 class MyTestingConfiguration(TestingConfiguration):
     _topology: Topology

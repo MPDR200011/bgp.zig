@@ -39,9 +39,9 @@ def start_cluster():
                     driver.install_file(node, Path(path), contents)
 
                 start_command = service_instance.get_start_command()
-                result = driver.run_cmd(node, start_command, wait=True)
-                if result.exit_code != 0:
-                    raise RuntimeError(f'fail to run command in node {node.name}: {start_command}\n{result.output}')
+                result = driver.run_cmd(node, start_command, wait=False)
+                # if result.exit_code != 0:
+                #     raise RuntimeError(f'fail to run command in node {node.name}: {start_command}\n{result.output}')
 
         spec = Spec(
             # test_config=config,
