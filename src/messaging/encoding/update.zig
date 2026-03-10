@@ -65,7 +65,8 @@ fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
     try writer.writeInt(u8, @intFromEnum(attrs.origin.value), .big);
 
     // AS Path
-    const asPathDataLen = calculateASPathByteLength(&attrs.asPath.value);
+    const asPath = &attrs.asPath.value;
+    const asPathDataLen = calculateASPathByteLength(asPath);
     const isExtendedLen = asPathDataLen > 255;
     if (isExtendedLen) {
         try writer.writeInt(u8, attrs.asPath.flags | model.ATTR_EXTENDED_LENGTH_FLAG, .big);
@@ -78,7 +79,7 @@ fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
     } else {
         try writer.writeInt(u8, @intCast(asPathDataLen), .big);
     }
-    for (attrs.asPath.value.segments) |segment| {
+    for (asPath.segments) |segment| {
         try writer.writeInt(u8, @intFromEnum(segment.segType), .big);
         try writer.writeInt(u8, @intCast(segment.contents.len), .big);
         for (segment.contents) |asn| {
@@ -95,8 +96,8 @@ fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
 
 pub fn writeUpdateBody(msg: model.UpdateMessage, writer: *std.Io.Writer) !void {
     std.log.debug(
-        "sending UPDATE(withdrawn={d}, advertised={d}, origin={s}, aspath={d})", 
-        .{msg.withdrawnRoutes.len, msg.advertisedRoutes.len, @tagName(msg.pathAttributes.?.origin.value), msg.pathAttributes.?.asPath.value.len()} 
+        "sending UPDATE(withdrawn={d}, advertised={d}, origin={s}, aspath={f})", 
+        .{msg.withdrawnRoutes.len, msg.advertisedRoutes.len, @tagName(msg.pathAttributes.?.origin.value), msg.pathAttributes.?.asPath.value} 
     );
 
     try writer.writeInt(u16, @intCast(calculateRoutesLength(msg.withdrawnRoutes)), .big);

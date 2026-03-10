@@ -247,6 +247,31 @@ pub const ASPath = struct {
             },
         }
     }
+
+    pub fn format(
+        self: *const Self,
+        writer: *std.Io.Writer,
+    ) std.Io.Writer.Error!void {
+        try writer.print("[", .{});
+        for (self.segments, 0..) |segment, segi| {
+            if (segment.segType == .AS_Sequence) {
+                try writer.print("seq{{", .{});
+            } else {
+                try writer.print("set{{", .{});
+            }
+            for (segment.contents, 0..) |asn, asni| {
+                try writer.print("{d}", .{asn});
+                if (asni < segment.contents.len-1) {
+                    try writer.print(", ", .{});
+                }
+            }
+            try writer.print("}}", .{});
+            if (segi < self.segments.len-1) {
+                try writer.print(", ", .{});
+            }
+        }
+        try writer.print("]", .{});
+    }
 };
 
 pub const Aggregator = struct {

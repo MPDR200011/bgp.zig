@@ -179,14 +179,21 @@ pub fn readUpdateMessage(self: *Self, messageLength: u16) !model.UpdateMessage {
     defer withdrawnRoutes.deinit();
 
     const attributesLength = try self.reader.takeInt(u16, .big);
-    const routeAttributes = try self.readAttributes(attributesLength);
-    defer routeAttributes.deinit();
-
     const advertisedLength = messageLength - withdrawnLength - attributesLength - 4;
-    const advertisedRoutes = try self.readRoutes(advertisedLength);
-    defer advertisedRoutes.deinit();
+    if (attributesLength == 0) {
+        if (advertisedLength != 0) {
+            return error.AdvertisedRoutesWithoutAttrs;
+        }
+        return .init(self.allocator, withdrawnRoutes.items, self.allocator.alloc(Route, 0) catch unreachable, null);
+    } else {
+        const routeAttributes = try self.readAttributes(attributesLength);
+        defer routeAttributes.deinit();
 
-    return .init(self.allocator, withdrawnRoutes.items, advertisedRoutes.items, routeAttributes);
+        const advertisedRoutes = try self.readRoutes(advertisedLength);
+        defer advertisedRoutes.deinit();
+
+        return .init(self.allocator, withdrawnRoutes.items, advertisedRoutes.items, routeAttributes);
+    }
 }
 
 const testing = std.testing;
