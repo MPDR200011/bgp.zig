@@ -94,6 +94,11 @@ fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
 }
 
 pub fn writeUpdateBody(msg: model.UpdateMessage, writer: *std.Io.Writer) !void {
+    std.log.debug(
+        "sending UPDATE(withdrawn={d}, advertised={d}, origin={s}, aspath={d})", 
+        .{msg.withdrawnRoutes.len, msg.advertisedRoutes.len, @tagName(msg.pathAttributes.?.origin.value), msg.pathAttributes.?.asPath.value.len()} 
+    );
+
     try writer.writeInt(u16, @intCast(calculateRoutesLength(msg.withdrawnRoutes)), .big);
     try writeRoutes(msg.withdrawnRoutes, writer);
 

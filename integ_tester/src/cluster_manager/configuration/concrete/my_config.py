@@ -57,8 +57,8 @@ class BgpzService(Service):
     def get_files(self) -> Mapping[str, io.IOBase]:
         project_root = os.environ['PROJECT_ROOT']
 
-        bird_config_dir = Path(project_root) / 'test_configs' / 'bgpz' / f'{self.node.name}.json'
-        with io.open(bird_config_dir, mode='rb') as f:
+        bgpz_config_dir = Path(project_root) / 'test_configs' / 'bgpz' / f'{self.node.name}.json'
+        with io.open(bgpz_config_dir, mode='rb') as f:
             return {
                 '/etc/bgpz/bgpz.json': io.BytesIO(f.read()),
                 '/usr/bin/start-bgp': io.BytesIO(START_UP_SCRIPT.encode())
@@ -90,7 +90,7 @@ class MyTestingConfiguration(TestingConfiguration):
                         'type': 'bird'
                     }
                 ),
-                'bgpz1': Node(
+                'bgpz': Node(
                     image_name='bgpz-docker',
                     name='bgpz',
                     data={
