@@ -201,7 +201,7 @@ fn syncFromMainToAdjOut(alloc: Allocator, adjRib: *AdjRibOutManager, mainRib: *c
     var mainIt = mainRib.rib.prefixes.iterator();
     while (mainIt.next()) |ribEntry| {
         const bestPath = ribEntry.value_ptr.paths.get(ribEntry.value_ptr.bestPath.?).?;
-        try adjRib.setPath(ribEntry.key_ptr.*, ribEntry.value_ptr.bestPath.?, bestPath.attrs);
+        try adjRib.adjRib.setPath(ribEntry.key_ptr.*, ribEntry.value_ptr.bestPath.?, bestPath.attrs);
 
         try res.updatedRoutes.append(alloc, .{ ribEntry.key_ptr.*, try bestPath.clone(alloc) });
     }
@@ -285,6 +285,12 @@ pub const SyncTask = struct {
             var aggregatedRoutes = try aggregateRouteUpdates(ctx.allocator, &filteredUpdates);
             defer aggregatedRoutes.deinit();
 
+            std.log.debug("sending peer {f} updates ({} dropped, {} advertised)", .{
+                peer.sessionAddresses.peerAddress,
+                result.deletedRoutes.items.len,
+                filteredUpdates.items.len
+            });
+
             // TODO: Message packaging, one message per prefix is naive
             for (result.deletedRoutes.items) |deletedRoute| {
                 try peer.session.sendMessage(.{ .UPDATE = .{ 
@@ -294,17 +300,21 @@ pub const SyncTask = struct {
                     .pathAttributes = null,
                 } });
             }
-            for (result.updatedRoutes.items) |update| {
-                var attrs = try update.@"1".attrs.clone(ctx.allocator);
-                attrs.nexthop.value = key.localAddress;
-                try attrs.asPath.value.prependASN(peer.localAsn);
+            var aggIter = aggregatedRoutes.groups.iterator();
+            while (aggIter.next()) |group| {
+                for (group.value_ptr.items) |route| {
+                    var attrs = try group.key_ptr.clone(ctx.allocator);
+                    attrs.nexthop.value = key.localAddress;
+                    try attrs.asPath.value.prependASN(peer.localAsn);
 
-                try peer.session.sendMessage(.{ .UPDATE = .{ 
-                    .allocator = ctx.allocator, 
-                    .withdrawnRoutes = &[_]model.Route{}, 
-                    .advertisedRoutes = &[_]model.Route{update.@"0"},
-                    .pathAttributes = attrs 
-                } });
+                    std.log.info("Sending update", .{});
+                    try peer.session.sendMessage(.{ .UPDATE = .{ 
+                        .allocator = ctx.allocator, 
+                        .withdrawnRoutes = &[_]model.Route{}, 
+                        .advertisedRoutes = &[_]model.Route{route},
+                        .pathAttributes = attrs 
+                    } });
+                }
             }
         }
 

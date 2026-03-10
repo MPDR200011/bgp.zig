@@ -45,8 +45,8 @@
             .hash = "zul-0.0.0-1oDot9yRBwDA_ovd6GC1M_ViW3LarywMaGrH6vcuEjqv",
         },
         .ip_zig = .{
-            .url = "git+https://github.com/mpdr200011/ip.zig.git#efb704299de98eb0bfc50689f7b567f51b1b5f9a",
-            .hash = "ip_zig-0.0.0-UpeXbaZ1AAAKZzd22RmJ3PgKcoBy0Su_RVJ5rE5Z91Fa",
+            .url = "git+https://github.com/mpdr200011/ip.zig.git#9982dd45feb37f2379dce45a4e0b515107eb4624",
+            .hash = "ip_zig-0.0.0-UpeXbWN0AAD5e450O2Jjneov9kgy_oTtVqf6LI4g9lPF",
         },
         .libxev = .{
             .url = "git+https://github.com/mitchellh/libxev.git#9b6634b6229be5f2c8fb22db1f6f652bac5c5040",

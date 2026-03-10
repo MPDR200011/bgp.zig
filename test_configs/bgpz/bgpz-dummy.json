@@ -1,0 +1,15 @@
+{
+    "localConfig": {
+        "asn": 65003,
+        "routerId": "192.168.1.2",
+        "localPort": 9001
+    },
+    "peers": [
+    ],
+    "networks": [
+        {
+            "afi": 4,
+            "address": "10.0.42.0/24"
+        }
+    ]
+}

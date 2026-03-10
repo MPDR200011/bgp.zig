@@ -1,0 +1,29 @@
+{
+    "localConfig": {
+        "asn": 65003,
+        "routerId": "192.168.1.2",
+        "localPort": 179
+    },
+    "peers": [
+        {
+            "localAddress": "192.168.1.2",
+            "peerAddress": "192.168.1.1",
+            "peerPort": 179,
+            "peeringMode": "PASSIVE",
+            "delayOpen_s": 5
+        },
+        {
+            "localAddress": "192.168.2.2",
+            "peerAddress": "192.168.2.1",
+            "peerPort": 179,
+            "peeringMode": "PASSIVE",
+            "delayOpen_s": 5
+        }
+    ],
+    "networks": [
+        {
+            "afi": 4,
+            "address": "10.0.42.0/24"
+        }
+    ]
+}

@@ -1,0 +1,30 @@
+[project]
+name = "cluster-manager"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Moisés Rocha", email = "moisesrocha99@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "click>=8.3.1",
+    "docker>=7.1.0",
+    "pydantic>=2.12.5",
+    "pyre-extensions>=0.0.32",
+    "pyrefly>=0.53.0",
+    "python-dotenv>=1.2.2",
+]
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
+
+[project.scripts]
+cluster-manager = "cluster_manager:main"
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"

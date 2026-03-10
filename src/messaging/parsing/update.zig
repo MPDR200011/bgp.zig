@@ -9,8 +9,10 @@ const UpdateParsingError = error{
 RoutesLengthInconsistent, 
 AttributesLengthInconsistent, 
 InvalidPrefixLength, 
-MissingMandatoryAttribute, 
 ASPAthAttrLengthInconsistent,
+MissingOriginAttribute, 
+MissingASPathAttribute,
+MissingNexthopAttribute
 };
 
 pub const UpdateMsgParser = @This();
@@ -44,7 +46,7 @@ fn takeIntoRoute(self: *Self, route: *Route) !u16 {
         bitsToRead -= 8;
     }
 
-    return (prefixByteLength + 1);
+    return (prefixByteLength + 1); // prefix length + length filed
 }
 
 fn readRoutes(self: *Self, routesLength: u16) !std.array_list.Managed(Route) {
@@ -154,8 +156,14 @@ fn readAttributes(self: *Self, attributesLength: u16) !PathAttributes {
         bytesToRead -= attributeLength; // For the attribute value
     }
 
-    if (!originRead or !nextHopRead or !asPathRead) {
-        return UpdateParsingError.MissingMandatoryAttribute;
+    if (!originRead) {
+        return UpdateParsingError.MissingOriginAttribute;
+    }
+    if (!asPathRead) {
+        return UpdateParsingError.MissingASPathAttribute;
+    }
+    if (!nextHopRead) {
+        return UpdateParsingError.MissingNexthopAttribute;
     }
 
     if (bytesToRead != 0) {
