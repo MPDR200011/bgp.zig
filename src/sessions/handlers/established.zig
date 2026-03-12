@@ -97,6 +97,14 @@ fn handleKeepAliveReceived(session: *Session) !PostHandlerAction {
 fn handleUpdateReceived(session: *Session, msg: model.UpdateMessage) !PostHandlerAction {
     try session.holdTimer.reschedule();
 
+    // Ignore external peers localPref by restting it to the default value
+    if (session.info.?.peerType == .External) {
+        if (msg.pathAttributes) |*attrs| {
+            attrs.localPref.flags = 0;
+            attrs.localPref.value = 100; // Default value
+        }
+    }
+
     try session.processUpdateMsg(msg);
 
     return .keep;

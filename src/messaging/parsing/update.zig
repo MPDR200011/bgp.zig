@@ -121,6 +121,10 @@ fn readAttributes(self: *Self, attributesLength: u16) !PathAttributes {
     var attributes: PathAttributes = .empty;
     attributes.allocator = self.allocator;
 
+    // Set local pref to the default value
+    attributes.localPref.flags = 0;
+    attributes.localPref.value = 100;
+
     var originRead: bool = false;
     var asPathRead: bool = false;
     var nextHopRead: bool = false;
@@ -150,7 +154,7 @@ fn readAttributes(self: *Self, attributesLength: u16) !PathAttributes {
                 nextHopRead = true;
             },
             5 => {
-                // FIXME this should be ignored when connection is external
+                // FIXME make sure localPref flags are properly set
                 attributes.localPref = .{ .flags = attributeFlags, .value = try self.readLocalPref() };
             },
             else => {
