@@ -99,9 +99,10 @@ fn handleUpdateReceived(session: *Session, msg: model.UpdateMessage) !PostHandle
 
     // Ignore external peers localPref by restting it to the default value
     if (session.info.?.peerType == .External) {
-        if (msg.pathAttributes) |*attrs| {
+        if (msg.pathAttributes) |*a| {
+            var attrs = @constCast(a);
             attrs.localPref.flags = 0;
-            attrs.localPref.value = 100; // Default value
+            attrs.localPref.value = 200; // Default value
         }
     }
 
