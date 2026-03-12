@@ -113,6 +113,10 @@ fn readNextHop(self: *Self) !ip.IpV4Address {
     return address;
 }
 
+fn readLocalPref(self: *Self) !u32 {
+    return try self.reader.takeInt(u32, .big);
+}
+
 fn readAttributes(self: *Self, attributesLength: u16) !PathAttributes {
     var attributes: PathAttributes = .empty;
     attributes.allocator = self.allocator;
@@ -144,6 +148,10 @@ fn readAttributes(self: *Self, attributesLength: u16) !PathAttributes {
                 std.debug.assert(attributeLength == 4);
                 attributes.nexthop = .{ .flags = attributeFlags, .value = try self.readNextHop() };
                 nextHopRead = true;
+            },
+            5 => {
+                // FIXME this should be ignored when connection is external
+                attributes.localPref = .{ .flags = attributeFlags, .value = try self.readLocalPref() };
             },
             else => {
                 // Ignore unknown attribute
@@ -447,7 +455,7 @@ test "readNextHop()" {
     try testing.expect(actualNextHop.equals(ip.IpV4Address.parse("192.168.0.1") catch unreachable));
 }
 
-test "readAttributes with unknown attribute" {
+test "readAttributes compound test" {
     const attributesBuffer = [_]u8{
         // Origin (Well-known mandatory)
         0x40, // Flags (Transitive)
@@ -455,6 +463,12 @@ test "readAttributes with unknown attribute" {
         1,    // Length
         0,    // Value (IGP)
         
+        // LocalPref
+        0x40, // Flags
+        5,    // Type
+        4,    // Length
+        0, 0, 0, 200, // Value
+
         // Unknown Attribute (Mocked)
         0x00, // Flags (Non-transitive, Optional as per BGP rules it should be ignored if unknown)
         99,   // Type (Unknown)
@@ -488,8 +502,10 @@ test "readAttributes with unknown attribute" {
     const attrs = try updateReader.readAttributes(@intCast(attributesBuffer.len));
     defer attrs.deinit();
 
-    // Verify mandatory attributes were parsed correctly despite the unknown attribute
+    // Verify attributes were parsed correctly despite the unknown attribute
     try testing.expectEqual(model.Origin.IGP, attrs.origin.value);
+    try testing.expect(attrs.localPref != null);
+    try testing.expectEqual(@as(u32, 200), attrs.localPref.?.value);
     try testing.expectEqual(@as(usize, 1), attrs.asPath.value.segments.len);
     try testing.expectEqual(model.ASPathSegmentType.AS_Sequence, attrs.asPath.value.segments[0].segType);
     try testing.expectEqualSlices(u16, &[_]u16{ 100, 200 }, attrs.asPath.value.segments[0].contents);
@@ -497,4 +513,18 @@ test "readAttributes with unknown attribute" {
     
     // Ensure we read the entire buffer
     try testing.expectEqual(attributesBuffer.len, stream.getPos());
+}
+
+test "readLocalPref()" {
+    const buffer = [_]u8{ 0, 0, 0, 100 };
+    var stream = std.io.fixedBufferStream(&buffer);
+    var readBuffer: [1024]u8 = undefined;
+    var reader = stream.reader().adaptToNewApi(&readBuffer);
+    var updateReader = Self{
+        .allocator = testing.allocator,
+        .reader = &reader.new_interface,
+    };
+
+    const actualLocalPref = try updateReader.readLocalPref();
+    try testing.expectEqual(@as(u32, 100), actualLocalPref);
 }
