@@ -508,8 +508,7 @@ test "readAttributes compound test" {
 
     // Verify attributes were parsed correctly despite the unknown attribute
     try testing.expectEqual(model.Origin.IGP, attrs.origin.value);
-    try testing.expect(attrs.localPref != null);
-    try testing.expectEqual(@as(u32, 200), attrs.localPref.?.value);
+    try testing.expectEqual(@as(u32, 200), attrs.localPref.value);
     try testing.expectEqual(@as(usize, 1), attrs.asPath.value.segments.len);
     try testing.expectEqual(model.ASPathSegmentType.AS_Sequence, attrs.asPath.value.segments[0].segType);
     try testing.expectEqualSlices(u16, &[_]u16{ 100, 200 }, attrs.asPath.value.segments[0].contents);
