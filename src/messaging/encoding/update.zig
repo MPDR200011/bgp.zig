@@ -55,7 +55,11 @@ fn calculateAttributesLength(attrs: *const PathAttributes) usize {
     return result;
 }
 
-fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
+fn writeLocalPref(writer: *std.Io.Writer, attrs: * const PathAttributes) !void {
+    try writer.writeInt(u32, attrs.localPref.value, .big);
+}
+
+fn writeAttributes(ctx: model.MessageContext, attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
     // TODO: For well-known attributes, the Transitive bit MUST be set to 1.
 
     // Origin
@@ -92,9 +96,14 @@ fn writeAttributes(attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
     try writer.writeInt(u8, 3, .big);
     try writer.writeInt(u8, 4, .big);
     try writer.writeAll(&attrs.nexthop.value.address);
+
+    // Local Pref
+    if (ctx.peerType.? == .Internal) {
+        try writeLocalPref(writer, attrs);
+    }
 }
 
-pub fn writeUpdateBody(msg: model.UpdateMessage, writer: *std.Io.Writer) !void {
+pub fn writeUpdateBody(ctx: model.MessageContext, msg: model.UpdateMessage, writer: *std.Io.Writer) !void {
     std.log.debug(
         "sending UPDATE(withdrawn={d}, advertised={d}, origin={s}, aspath={f})", 
         .{msg.withdrawnRoutes.len, msg.advertisedRoutes.len, @tagName(msg.pathAttributes.?.origin.value), msg.pathAttributes.?.asPath.value} 
@@ -105,7 +114,7 @@ pub fn writeUpdateBody(msg: model.UpdateMessage, writer: *std.Io.Writer) !void {
 
     if (msg.pathAttributes) |*attrs| {
         try writer.writeInt(u16, @intCast(calculateAttributesLength(attrs)), .big);
-        try writeAttributes(attrs, writer);
+        try writeAttributes(ctx, attrs, writer);
 
         try writeRoutes(msg.advertisedRoutes, writer);
     }
