@@ -158,9 +158,14 @@ fn connectionStartThread(ctx: StartConnContext) void {
 }
 
 pub const Session = struct {
+    const PeerType = enum {
+        Internal,
+        External
+    };
     const Info = struct {
         peerId: u32,
         peerAsn: u16,
+        peerType: PeerType
     };
 
     const Self = @This();
@@ -245,6 +250,7 @@ pub const Session = struct {
         self.info = .{
             .peerId = msg.peerRouterId,
             .peerAsn = msg.asNumber,
+            .peerType = if (msg.asNumber == self.parent.localAsn) .Internal else .External,
         };
         self.adjRibOutManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress });
         self.adjRibInManager = try .init(self.allocator, .{ .V4 = self.parent.sessionAddresses.peerAddress });
