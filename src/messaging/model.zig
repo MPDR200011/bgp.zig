@@ -66,7 +66,7 @@ pub const NotificationMessage = struct {
     }
 
     pub fn init(errorCode: ErrorCode, errorKind: ErrorKind, dataLength: usize, allocator: Allocator) !Self {
-        const data = if (dataLength > 0) null else try allocator.alloc(u8, dataLength);
+        const data = try allocator.alloc(u8, dataLength);
         errdefer allocator.free(data);
 
         return .{

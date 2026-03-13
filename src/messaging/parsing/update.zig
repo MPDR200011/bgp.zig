@@ -155,6 +155,7 @@ fn readAttributes(self: *Self, attributesLength: u16) !PathAttributes {
             },
             5 => {
                 // FIXME make sure localPref flags are properly set
+                std.debug.assert(attributeLength == 4);
                 attributes.localPref = .{ .flags = attributeFlags, .value = try self.readLocalPref() };
             },
             else => {

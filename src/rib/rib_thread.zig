@@ -262,6 +262,8 @@ pub const SyncTask = struct {
                 continue;
             }
 
+            const peerType = peer.session.info.?.peerType;
+
             const adjOut = &peer.session.adjRibOutManager.?;
             adjOut.ribMutex.lock();
             defer adjOut.ribMutex.unlock();
@@ -302,11 +304,14 @@ pub const SyncTask = struct {
             }
             var aggIter = aggregatedRoutes.groups.iterator();
             while (aggIter.next()) |group| {
-                for (group.value_ptr.items) |route| {
-                    var attrs = try group.key_ptr.clone(ctx.allocator);
+                var attrs = try group.key_ptr.clone(ctx.allocator);
+
+                if (peerType == .External) {
                     attrs.nexthop.value = key.localAddress;
                     try attrs.asPath.value.prependASN(peer.localAsn);
+                }
 
+                for (group.value_ptr.items) |route| {
                     std.log.info("Sending update", .{});
                     try peer.session.sendMessage(.{ .UPDATE = .{ 
                         .allocator = ctx.allocator, 
