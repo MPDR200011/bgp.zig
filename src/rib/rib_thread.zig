@@ -253,7 +253,7 @@ pub const SyncTask = struct {
         entryIt = ctx.peerMap.iterator();
         while (entryIt.next()) |entry| {
             const peer = entry.value_ptr.*;
-            const key = entry.key_ptr;
+            const sessionsAddresses = entry.key_ptr;
 
             // Lock the session to grab the adjIn reference
             peer.session.mutex.lock();
@@ -307,7 +307,7 @@ pub const SyncTask = struct {
                 var attrs = try group.key_ptr.clone(ctx.allocator);
 
                 if (peerType == .External) {
-                    attrs.nexthop.value = key.localAddress;
+                    attrs.nexthop.value = sessionsAddresses.localAddress;
                     try attrs.asPath.value.prependASN(peer.localAsn);
                 }
 
