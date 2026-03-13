@@ -1,6 +1,8 @@
 const std = @import("std");
 const ip = @import("ip");
 
+const sessions = @import("../sessions/session.zig");
+
 const Allocator = std.mem.Allocator;
 
 pub const ParameterType = enum(u8) {};
@@ -64,7 +66,7 @@ pub const NotificationMessage = struct {
     }
 
     pub fn init(errorCode: ErrorCode, errorKind: ErrorKind, dataLength: usize, allocator: Allocator) !Self {
-        const data = if (dataLength > 0) null else try allocator.alloc(u8, dataLength);
+        const data = try allocator.alloc(u8, dataLength);
         errdefer allocator.free(data);
 
         return .{
@@ -452,6 +454,10 @@ pub const PathAttributes = struct {
             agg.value.hash(hasher);
         }
     }
+};
+
+pub const MessageContext = struct {
+    peerType: ?sessions.Session.PeerType
 };
 
 pub const UpdateMessage = struct {

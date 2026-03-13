@@ -158,7 +158,7 @@ fn connectionStartThread(ctx: StartConnContext) void {
 }
 
 pub const Session = struct {
-    const PeerType = enum {
+    pub const PeerType = enum {
         Internal,
         External
     };
@@ -286,7 +286,12 @@ pub const Session = struct {
         std.log.debug("Sending message", .{});
         var writeBuffer: [8000]u8 = undefined;
         var connectionWriter = connection.writer(&writeBuffer);
-        try self.messageEncoder.writeMessage(msg, &connectionWriter.interface);
+
+        
+        try self.messageEncoder.writeMessage(.{
+            .peerType = if (self.info != null) self.info.?.peerType else null
+        }, msg, &connectionWriter.interface);
+
         std.log.debug("Sent message", .{});
 
         if (msg == .UPDATE) {
