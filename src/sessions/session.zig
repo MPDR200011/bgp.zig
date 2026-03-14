@@ -64,13 +64,13 @@ pub const Event = union(enum) {
     UpdateReceived: messageModel.UpdateMessage,
     NotificationReceived: messageModel.NotificationMessage,
 
-    pub fn deinit(self: @This()) void {
-        switch (self) {
+    pub fn deinit(self: *@This()) void {
+        switch (@constCast(self).*) {
             .OpenReceived => { },
-            .UpdateReceived => |msg| {
+            .UpdateReceived => |*msg| {
                 msg.deinit();
             },
-            .NotificationReceived => |msg| {
+            .NotificationReceived => |*msg| {
                 msg.deinit();
             },
             .OpenCollisionDump => { },
@@ -425,7 +425,8 @@ pub const Session = struct {
     }
 
     pub fn handleEvent(self: *Self, event: Event) void {
-        defer event.deinit();
+        // TODO: find way to not have to do this...
+        defer @constCast(&event).deinit();
 
         self.mutex.lock();
         defer self.mutex.unlock();
