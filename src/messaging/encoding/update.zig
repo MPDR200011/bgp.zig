@@ -44,21 +44,23 @@ fn calculateAttributesLength(attrs: *const AttributeList) usize {
     var result: usize = 0;
 
     for (attrs.list.items) |*attr| {
-        result += size: switch (attr.*) {
-            .Origin => 4, // Origin: Flags(1) + Type(1) + Len(1) + Val(1)
+        const dataLength: usize = size: switch (attr.*) {
+            .Origin => 1,
             .AsPath => |*asPath| {
-                // AS Path: Flags(1) + Type(1) + Len(1 or 2) + Data
-                const asPathDataLen = calculateASPathByteLength(&asPath.value);
-                var tmp: usize = 0;
-                tmp += 2; // Flags + Type
-                tmp += if (asPathDataLen > 255) @as(usize, 2) else @as(usize, 1); // Length field
-                tmp += asPathDataLen;
-                break :size tmp;
+                break :size calculateASPathByteLength(&asPath.value);
             },
-            .Nexthop => 7, // Nexthop: Flags(1) + Type(1) + Len(1) + Val(4)
-            .LocalPref => 7,
-            else => 0,
+            .Nexthop => 4,
+            .MultiExitDiscriminator => 4,
+            .LocalPref => 4,
+            .AtomicAggregate => 0,
+            .Aggregator => 6,
+            .Unknown => |*uk| {
+                break :size uk.value.value.len;
+            }
         };
+
+        const lengthFieldSize: usize = if (dataLength > 255) 2 else 1;
+        result += 2 + lengthFieldSize + dataLength;
     }
 
     return result;
@@ -71,22 +73,21 @@ fn writeLocalPref(writer: *std.Io.Writer, localPref: * const ribModel.LocalPrefA
 fn writeAttributes(attrs: *const AttributeList, writer: *std.Io.Writer) !void {
     // TODO: For well-known attributes, the Transitive bit MUST be set to 1.
 
-    for (attrs.list.items) |*attr| {
-        switch (attr.*) {
-            .Origin => |*origin| {
+    for (attrs.list.items) |attr| {
+        switch (attr) {
+            .Origin => |origin| {
                 try writer.writeInt(u8, origin.flags, .big);
                 try writer.writeInt(u8, 1, .big);
                 try writer.writeInt(u8, 1, .big);
                 try writer.writeInt(u8, @intFromEnum(origin.value), .big);
             },
-            .AsPath => |*asPath| {
-                // AS Path
+            .AsPath => |asPath| {
                 const asPathDataLen = calculateASPathByteLength(&asPath.value);
                 const isExtendedLen = asPathDataLen > 255;
                 if (isExtendedLen) {
                     try writer.writeInt(u8, asPath.flags | ribModel.ATTR_EXTENDED_LENGTH_FLAG, .big);
                 } else {
-                    try writer.writeInt(u8, asPath.flags, .big);
+                    try writer.writeInt(u8, asPath.flags & (~ribModel.ATTR_EXTENDED_LENGTH_FLAG), .big);
                 }
                 try writer.writeInt(u8, 2, .big);
                 if (isExtendedLen) {
@@ -102,11 +103,17 @@ fn writeAttributes(attrs: *const AttributeList, writer: *std.Io.Writer) !void {
                     }
                 }
             },
-            .Nexthop => |*nexthop| {
+            .Nexthop => |nexthop| {
                 try writer.writeInt(u8, nexthop.flags, .big);
                 try writer.writeInt(u8, 3, .big);
                 try writer.writeInt(u8, 4, .big);
                 try writer.writeAll(&nexthop.value.address);
+            },
+            .MultiExitDiscriminator=> |med| {
+                try writer.writeInt(u8, med.flags, .big);
+                try writer.writeInt(u8, 4, .big);
+                try writer.writeInt(u8, 4, .big);
+                try writer.writeInt(u32, med.value.value, .big);
             },
             .LocalPref => |*localPref| {
                 try writer.writeInt(u8, localPref.flags, .big);
@@ -114,7 +121,36 @@ fn writeAttributes(attrs: *const AttributeList, writer: *std.Io.Writer) !void {
                 try writer.writeInt(u8, 4, .big);
                 try writeLocalPref(writer, localPref);
             },
-            else => {},
+            .AtomicAggregate => |aAgg| {
+                try writer.writeInt(u8, aAgg.flags, .big);
+                try writer.writeInt(u8, 6, .big);
+                try writer.writeInt(u8, 0, .big);
+            },
+            .Aggregator => |agg| {
+                try writer.writeInt(u8, agg.flags, .big);
+                try writer.writeInt(u8, 7, .big);
+                try writer.writeInt(u8, 6, .big);
+                try writer.writeInt(u16, agg.value.as, .big);
+                try writer.writeAll(&agg.value.address.address);
+            },
+            .Unknown => |uk| {
+                const isExtendedLen = uk.value.value.len > 255;
+                if (isExtendedLen) {
+                    try writer.writeInt(u8, uk.flags | ribModel.ATTR_EXTENDED_LENGTH_FLAG, .big);
+                } else {
+                    try writer.writeInt(u8, uk.flags & (~ribModel.ATTR_EXTENDED_LENGTH_FLAG), .big);
+                }
+
+                try writer.writeInt(u8, uk.value.typeCode, .big); // Type
+
+                if (isExtendedLen) {
+                    try writer.writeInt(u16, @intCast(uk.value.value.len), .big);
+                } else {
+                    try writer.writeInt(u8, @intCast(uk.value.value.len), .big);
+                }
+
+                try writer.writeAll(uk.value.value);
+            }
         }
     }
 }
@@ -128,6 +164,10 @@ pub fn writeUpdateBody(msg: messageModel.UpdateMessage, writer: *std.Io.Writer) 
     try writer.writeInt(u16, @intCast(calculateRoutesLength(msg.withdrawnRoutes)), .big);
     try writeRoutes(msg.withdrawnRoutes, writer);
 
+    // FIXME: Maybe it'll be better in the long run to just pre-write to buffer
+    // and print out the buffer length, instead of keeping two different
+    // implementations of kinda the same thing. Although it does have the
+    // benefit of little to no allocs
     try writer.writeInt(u16, @intCast(calculateAttributesLength(&msg.pathAttributes)), .big);
     try writeAttributes(&msg.pathAttributes, writer);
 
