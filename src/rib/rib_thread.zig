@@ -3,8 +3,10 @@ const zul = @import("zul");
 const ip = @import("ip");
 const adjRibManager = @import("adj_rib_manager.zig");
 const mainRibManager = @import("main_rib_manager.zig");
-const model = @import("../messaging/model.zig");
+const model = @import("model.zig");
 const common = @import("common.zig");
+const utils = @import("utils.zig");
+const messageModel = @import("../messaging/model.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -299,7 +301,10 @@ pub const SyncTask = struct {
                     .allocator = ctx.allocator,
                     .withdrawnRoutes = &[_]model.Route{deletedRoute},
                     .advertisedRoutes = &[_]model.Route{},
-                    .pathAttributes = null,
+                    .pathAttributes = .{
+                        .alloc = ctx.allocator,
+                        .list = .empty,
+                    },
                 } });
             }
             var aggIter = aggregatedRoutes.groups.iterator();
@@ -313,12 +318,14 @@ pub const SyncTask = struct {
 
                 for (group.value_ptr.items) |route| {
                     std.log.info("Sending update", .{});
-                    try peer.session.sendMessage(.{ .UPDATE = .{ 
+                    const msg: messageModel.BgpMessage = .{ .UPDATE = .{ 
                         .allocator = ctx.allocator, 
                         .withdrawnRoutes = &[_]model.Route{}, 
                         .advertisedRoutes = &[_]model.Route{route},
-                        .pathAttributes = attrs 
-                    } });
+                        .pathAttributes = try utils.convertUnifiedStructToAttributeList(ctx.allocator, peerType, attrs),
+                    } };
+                    defer msg.deinit();
+                    try peer.session.sendMessage(msg);
                 }
             }
         }

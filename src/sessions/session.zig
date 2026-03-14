@@ -14,6 +14,9 @@ const activeHandler = @import("handlers/active.zig");
 const openSentHandler = @import("handlers/open_sent.zig");
 const openConfirmHandler = @import("handlers/open_confirm.zig");
 const establishedHandler = @import("handlers/established.zig");
+const ribModel = @import("../rib/model.zig");
+
+const ribUtils = @import("../rib/utils.zig");
 
 const ribManager = @import("../rib/main_rib_manager.zig");
 const adjRibManager = @import("../rib/adj_rib_manager.zig");
@@ -443,12 +446,14 @@ pub const Session = struct {
     }
 
     pub fn processUpdateMsg(self: *Self, msg: messageModel.UpdateMessage) !void {
+        const pathAttributes: ?ribModel.PathAttributes = try ribUtils.convertAttributeListToUnifiedStruct(self.allocator, self.info.?.peerType, msg.pathAttributes);
+
         for (msg.withdrawnRoutes) |route| {
             self.adjRibInManager.?.removePath(route);
         }
 
         for (msg.advertisedRoutes) |route| {
-            try self.adjRibInManager.?.setPath(route, msg.pathAttributes.?);
+            try self.adjRibInManager.?.setPath(route, pathAttributes.?);
         }
     }
 };

@@ -98,7 +98,7 @@ pub const NotificationMessage = struct {
     }
 };
 
-const PathAttribute = union(enum) {
+pub const PathAttribute = union(enum) {
     Origin: OriginAttr,
     AsPath: AsPathAttr,
     Nexthop: NexthopAttr,
@@ -137,16 +137,24 @@ const PathAttribute = union(enum) {
     }
 
     pub fn clone(self: *@This(), allocator: Allocator) !@This() {
-        switch (self) {
+        switch (self.*) {
             .AsPath => |asPath| {
-                return .{ .AsPath = asPath.clone(allocator)};
+                var tmp: AsPathAttr = asPath;
+                tmp.value = try asPath.value.clone(allocator);
+                return .{ .AsPath = tmp };
             },
             .Origin,
             .Nexthop,
             .LocalPref,
             .AtomicAggregate,
             .MultiExitDiscriminator,
-            .Aggregator => { return self.*; }
+            .Aggregator => { return self.*; },
+            .Unknown => |unknown| {
+                var tmp: UnknownAttr = unknown;
+                tmp.value.value = try allocator.dupe(u8, unknown.value.value);
+                tmp.value.allocator = allocator;
+                return .{ .Unknown = tmp };
+            },
         }
     }
 };

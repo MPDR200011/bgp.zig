@@ -137,21 +137,21 @@ pub fn writeUpdateBody(msg: messageModel.UpdateMessage, writer: *std.Io.Writer) 
 const testing = std.testing;
 
 test "calculateRoutesLength()" {
-    try testing.expectEqual(0, calculateRoutesLength(&[_]messageModel.Route{}));
-    try testing.expectEqual(16, calculateRoutesLength(&[_]messageModel.Route{
-        messageModel.Route{
+    try testing.expectEqual(0, calculateRoutesLength(&[_]ribModel.Route{}));
+    try testing.expectEqual(16, calculateRoutesLength(&[_]ribModel.Route{
+        ribModel.Route{
             .prefixLength = 16,
             .prefixData = [4]u8{ 0, 0, 0, 0 },
         },
-        messageModel.Route{
+        ribModel.Route{
             .prefixLength = 12,
             .prefixData = [4]u8{ 0, 0, 0, 0 },
         },
-        messageModel.Route{
+        ribModel.Route{
             .prefixLength = 32,
             .prefixData = [4]u8{ 0, 0, 0, 0 },
         },
-        messageModel.Route{
+        ribModel.Route{
             .prefixLength = 31,
             .prefixData = [4]u8{ 0, 0, 0, 0 },
         },
@@ -159,20 +159,20 @@ test "calculateRoutesLength()" {
 }
 
 test "writeRoutes()" {
-    const testRoutes = [_]messageModel.Route{
-        messageModel.Route{
+    const testRoutes = [_]ribModel.Route{
+        ribModel.Route{
             .prefixLength = 16,
             .prefixData = [4]u8{ 0xff, 0xff, 0, 0 },
         },
-        messageModel.Route{
+        ribModel.Route{
             .prefixLength = 12,
             .prefixData = [4]u8{ 0, 0xff, 0, 0 },
         },
-        messageModel.Route{
+        ribModel.Route{
             .prefixLength = 32,
             .prefixData = [4]u8{ 127, 0, 42, 69 },
         },
-        messageModel.Route{
+        ribModel.Route{
             .prefixLength = 31,
             .prefixData = [4]u8{ 127, 0, 42, 69 },
         },
@@ -200,7 +200,7 @@ test "writeUpdateBody() - External Peer" {
     const asPath = asPathInit: {
         const referencePath: AsPath = .{
             .allocator = testing.allocator,
-            .segments = &[_]messageModel.ASPathSegment{
+            .segments = &[_]ribModel.ASPathSegment{
                 .{.allocator = testing.allocator, .segType = .AS_Set, .contents = &[_]u16{69}}
             },
         };
@@ -208,30 +208,29 @@ test "writeUpdateBody() - External Peer" {
     };
 
     var list = std.ArrayListUnmanaged(PathAttribute){};
-    try list.append(testing.allocator, .{ .Origin = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = .EGP } });
-    try list.append(testing.allocator, .{ .AsPath = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = asPath } });
-    try list.append(testing.allocator, .{ .Nexthop = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) } });
-    try list.append(testing.allocator, .{ .LocalPref = .init(100) });
+    try list.append(testing.allocator, .{ .Origin = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = .EGP } });
+    try list.append(testing.allocator, .{ .AsPath = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = asPath } });
+    try list.append(testing.allocator, .{ .Nexthop = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) } });
     const attrs = AttributeList{ .alloc = testing.allocator, .list = list };
 
     const msg = try messageModel.UpdateMessage.init(
         testing.allocator, 
-        &[_]messageModel.Route{ 
-            messageModel.Route{
+        &[_]ribModel.Route{ 
+            ribModel.Route{
                 .prefixLength = 16,
                 .prefixData = [4]u8{ 0xff, 0xff, 0, 0 },
             }, 
-            messageModel.Route{
+            ribModel.Route{
                 .prefixLength = 12,
                 .prefixData = [4]u8{ 0, 0xff, 0, 0 },
             } 
         }, 
-        &[_]messageModel.Route{
-            messageModel.Route{
+        &[_]ribModel.Route{
+            ribModel.Route{
                 .prefixLength = 32,
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
-            messageModel.Route{
+            ribModel.Route{
                 .prefixLength = 31,
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
@@ -273,7 +272,7 @@ test "writeUpdateBody() - Internal Peer" {
     const asPath = asPathInit: {
         const referencePath: AsPath = .{
             .allocator = testing.allocator,
-            .segments = &[_]messageModel.ASPathSegment{
+            .segments = &[_]ribModel.ASPathSegment{
                 .{.allocator = testing.allocator, .segType = .AS_Set, .contents = &[_]u16{69}}
             },
         };
@@ -281,30 +280,30 @@ test "writeUpdateBody() - Internal Peer" {
     };
 
     var list = std.ArrayListUnmanaged(PathAttribute){};
-    try list.append(testing.allocator, .{ .Origin = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = .EGP } });
-    try list.append(testing.allocator, .{ .AsPath = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = asPath } });
-    try list.append(testing.allocator, .{ .Nexthop = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) } });
+    try list.append(testing.allocator, .{ .Origin = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = .EGP } });
+    try list.append(testing.allocator, .{ .AsPath = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = asPath } });
+    try list.append(testing.allocator, .{ .Nexthop = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) } });
     try list.append(testing.allocator, .{ .LocalPref = .init(100) });
     const attrs = AttributeList{ .alloc = testing.allocator, .list = list };
 
     const msg = try messageModel.UpdateMessage.init(
         testing.allocator, 
-        &[_]messageModel.Route{ 
-            messageModel.Route{
+        &[_]ribModel.Route{ 
+            ribModel.Route{
                 .prefixLength = 16,
                 .prefixData = [4]u8{ 0xff, 0xff, 0, 0 },
             }, 
-            messageModel.Route{
+            ribModel.Route{
                 .prefixLength = 12,
                 .prefixData = [4]u8{ 0, 0xff, 0, 0 },
             } 
         }, 
-        &[_]messageModel.Route{
-            messageModel.Route{
+        &[_]ribModel.Route{
+            ribModel.Route{
                 .prefixLength = 32,
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
-            messageModel.Route{
+            ribModel.Route{
                 .prefixLength = 31,
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },

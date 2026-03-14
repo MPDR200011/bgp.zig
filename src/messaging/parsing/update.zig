@@ -134,10 +134,6 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
         .list = .empty
     };
 
-    //var originRead: bool = false;
-    //var asPathRead: bool = false;
-    //var nextHopRead: bool = false;
-
     var bytesToRead: i32 = @intCast(attributesLength);
     while (bytesToRead > 0) {
         const attributeFlags = try self.reader.takeInt(u8, .big);
@@ -188,7 +184,6 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
                         .value = try self.readUnknownAttributeValue(attributeLength),
                     },
                 } };
-                try self.reader.discardAll(attributeLength);
             },
         }
 
@@ -196,16 +191,6 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
         bytesToRead -= if (extendedLength) 2 else 1; // For attributeLength field itself
         bytesToRead -= attributeLength; // For the attribute value
     }
-
-    //if (!originRead) {
-    //    return UpdateParsingError.MissingOriginAttribute;
-    //}
-    //if (!asPathRead) {
-    //    return UpdateParsingError.MissingASPathAttribute;
-    //}
-    //if (!nextHopRead) {
-    //    return UpdateParsingError.MissingNexthopAttribute;
-    //}
 
     if (bytesToRead != 0) {
         return UpdateParsingError.AttributesLengthInconsistent;
@@ -537,7 +522,7 @@ test "readAttributes compound test" {
         .reader = &reader.new_interface,
     };
 
-    const attrs = try updateReader.readAttributes(@intCast(attributesBuffer.len));
+    var attrs = try updateReader.readAttributes(@intCast(attributesBuffer.len));
     defer attrs.deinit();
 
     // Verify attributes were parsed correctly despite the unknown attribute

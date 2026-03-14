@@ -1,5 +1,5 @@
 const std = @import("std");
-const model = @import("../../../model.zig");
+const model = @import("../../../../rib/model.zig");
 
 fn calculateRouteSize(route: *const model.Route) usize {
     var l = route.prefixLength / 8;
