@@ -386,7 +386,7 @@ test "readUpdateMessage()" {
         .allocator = testing.allocator,
         .reader = &reader.new_interface,
     };
-    const message = try updateReader.readUpdateMessage(@intCast(messageBuffer.len));
+    var message = try updateReader.readUpdateMessage(@intCast(messageBuffer.len));
     defer message.deinit();
 
     try testing.expectEqual(stream.getPos(), messageBuffer.len);

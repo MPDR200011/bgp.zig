@@ -213,7 +213,7 @@ test "writeUpdateBody() - External Peer" {
     try list.append(testing.allocator, .{ .Nexthop = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) } });
     const attrs = AttributeList{ .alloc = testing.allocator, .list = list };
 
-    const msg = try messageModel.UpdateMessage.init(
+    var msg = try messageModel.UpdateMessage.init(
         testing.allocator, 
         &[_]ribModel.Route{ 
             ribModel.Route{
@@ -286,7 +286,7 @@ test "writeUpdateBody() - Internal Peer" {
     try list.append(testing.allocator, .{ .LocalPref = .init(100) });
     const attrs = AttributeList{ .alloc = testing.allocator, .list = list };
 
-    const msg = try messageModel.UpdateMessage.init(
+    var msg = try messageModel.UpdateMessage.init(
         testing.allocator, 
         &[_]ribModel.Route{ 
             ribModel.Route{
