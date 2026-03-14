@@ -123,6 +123,15 @@ fn readLocalPref(self: *Self) !u32 {
     return try self.reader.takeInt(u32, .big);
 }
 
+fn readAggregator(self: *Self) !ribModel.Aggregator {
+    var agg: ribModel.Aggregator = .{
+        .as = try self.reader.takeInt(u16, .big),
+        .address = undefined
+    };
+    try self.reader.readSliceAll(agg.address.address);
+    return agg;
+}
+
 fn readUnknownAttributeValue(self: *Self, len: u16) ![]u8 {
     const buffer = try self.allocator.alloc(u8, len);
     errdefer self.allocator.free(buffer);
@@ -174,6 +183,12 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
                     .value = try self.readNextHop(),
                 } };
             },
+            4 => {
+                break :attr .{ .MultiExitDiscriminator = .{
+                    .flags = attributeFlags,
+                    .value = try self.reader.takeInt(u32, .big),
+                } };
+            },
             5 => {
                 // FIXME make sure localPref flags are properly set
                 std.debug.assert(attributeLength == 4);
@@ -181,6 +196,18 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
                     .flags = attributeFlags,
                     .value = try self.readLocalPref(),
                 } };
+            },
+            6 => {
+                break :attr .{ .AtomicAggregate = .{
+                    .flags = attributeFlags,
+                    .value = true
+                }};
+            },
+            7 => {
+                break :attr .{ .Aggregator = .{
+                    .flags = attributeFlags,
+                    .value = try self.readAggregator(),
+                }};
             },
             else => {
                 // Ignore unknown attribute
