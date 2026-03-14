@@ -63,6 +63,20 @@ pub const Event = union(enum) {
     OpenCollisionDump: CollisionContext,
     UpdateReceived: messageModel.UpdateMessage,
     NotificationReceived: messageModel.NotificationMessage,
+
+    pub fn deinit(self: @This()) void {
+        switch (self) {
+            .OpenReceived => { },
+            .UpdateReceived => |msg| {
+                msg.deinit();
+            },
+            .NotificationReceived => |msg| {
+                msg.deinit();
+            },
+            .OpenCollisionDump => { },
+            else => {},
+        }
+    }
 };
 
 pub const PostHandlerAction = union(enum) {
@@ -411,6 +425,8 @@ pub const Session = struct {
     }
 
     pub fn handleEvent(self: *Self, event: Event) void {
+        defer event.deinit();
+
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -425,18 +441,6 @@ pub const Session = struct {
         switch (nextAction) {
             .Transition => |nextState| self.switchState(nextState),
             .Keep => {},
-        }
-
-        switch (@constCast(&event).*) {
-            .OpenReceived => { },
-            .UpdateReceived => |*msg| {
-                msg.deinit();
-            },
-            .NotificationReceived => |*msg| {
-                msg.deinit();
-            },
-            .OpenCollisionDump => { },
-            else => {},
         }
     }
 
