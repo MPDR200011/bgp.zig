@@ -68,6 +68,11 @@ pub fn connectionHandler(ctx: ConnectionHandlerContext) void {
             std.log.err("Error handling event {s}: {}", .{ @tagName(event), err });
             break :connection;
         };
+
+        if (event == .NotificationReceived) {
+            std.log.info("Notification received, shutting down connection thread.", .{});
+            break :connection;
+        }
     }
 
     std.log.debug("Shutting down connection handler", .{});
