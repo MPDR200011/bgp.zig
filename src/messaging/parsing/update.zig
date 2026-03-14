@@ -147,10 +147,7 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
         .list = .empty
     };
     errdefer {
-        for (attributes.list.items) |*attr| {
-            attr.deinit();
-        }
-        attributes.list.deinit(attributes.alloc);
+        attributes.deinit();
     }
 
     var bytesToRead: i32 = @intCast(attributesLength);
