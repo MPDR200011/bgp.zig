@@ -98,3 +98,67 @@ pub fn convertUnifiedStructToAttributeList(allocator: Allocator, peerType: sessi
 
     return attributes;
 }
+
+test "symmetry between attribute conversions obj -> list -> obj" {
+    const testing = std.testing;
+    const ip = @import("ip");
+    
+    // Create a robust initial structure
+    const as_path_seg = ribModel.ASPathSegment{
+        .allocator = testing.allocator,
+        .segType = .AS_Sequence,
+        .contents = try testing.allocator.dupe(u16, &[_]u16{ 1, 2, 3 }),
+    };
+    defer as_path_seg.deinit();
+
+    const as_path = ribModel.ASPath{
+        .allocator = testing.allocator,
+        .segments = try testing.allocator.dupe(ribModel.ASPathSegment, &[_]ribModel.ASPathSegment{try as_path_seg.clone(testing.allocator)}),
+    };
+
+    const attrs1 = ribModel.PathAttributes{
+        .allocator = testing.allocator,
+        .origin = .init(.IGP),
+        .asPath = .init(as_path),
+        .nexthop = .init(try ip.IpV4Address.parse("1.1.1.1")),
+        .localPref = .init(200),
+        .atomicAggregate = .init(false),
+        .multiExitDiscriminator = .init(10),
+        .aggregator = .init(.{
+            .as = 65001,
+            .address = try ip.IpV4Address.parse("2.2.2.2"),
+        }),
+    };
+    defer attrs1.deinit();
+
+    // Test Internal peer type encoding/decoding symmetry
+    {
+        var attrList = try convertUnifiedStructToAttributeList(testing.allocator, .Internal, attrs1);
+        defer attrList.deinit();
+
+        const attrs2_opt = try convertAttributeListToUnifiedStruct(testing.allocator, .Internal, attrList);
+        try testing.expect(attrs2_opt != null);
+        var attrs2 = attrs2_opt.?;
+        defer attrs2.deinit();
+
+        try testing.expect(attrs1.equal(&attrs2));
+    }
+
+    // Test External peer type encoding/decoding symmetry
+    {
+        var attrList = try convertUnifiedStructToAttributeList(testing.allocator, .External, attrs1);
+        defer attrList.deinit();
+
+        const attrs3_opt = try convertAttributeListToUnifiedStruct(testing.allocator, .External, attrList);
+        try testing.expect(attrs3_opt != null);
+        var attrs3 = attrs3_opt.?;
+        defer attrs3.deinit();
+
+        // LocalPref is forced to 100 on reading External attributes
+        var expected_attrs3 = try attrs1.clone(testing.allocator);
+        defer expected_attrs3.deinit();
+        expected_attrs3.localPref.value = 100;
+
+        try testing.expect(expected_attrs3.equal(&attrs3));
+    }
+}
