@@ -1,12 +1,15 @@
 const std = @import("std");
 const ip = @import("ip");
 const consts = @import("../consts.zig");
-const model = @import("../model.zig");
+const messageModel = @import("../model.zig");
+const ribModel = @import("../../rib/model.zig");
 
-const PathAttributes = model.PathAttributes;
-const AsPath = model.ASPath;
+const PathAttribute = messageModel.PathAttribute;
+const AttributeList = messageModel.AttributeList;
 
-fn calculateRoutesLength(routes: []const model.Route) usize {
+const AsPath = ribModel.ASPath;
+
+fn calculateRoutesLength(routes: []const messageModel.Route) usize {
     var total: usize = 0;
     for (routes) |route| {
         total += 1;
@@ -18,7 +21,7 @@ fn calculateRoutesLength(routes: []const model.Route) usize {
     return total;
 }
 
-fn writeRoutes(routes: []const model.Route, writer: *std.Io.Writer) !void {
+fn writeRoutes(routes: []const messageModel.Route, writer: *std.Io.Writer) !void {
     for (routes) |route| {
         try writer.writeInt(u8, route.prefixLength, .big);
 
@@ -37,115 +40,118 @@ fn calculateASPathByteLength(asPath: *const AsPath) usize {
     return result;
 }
 
-fn calculateAttributesLength(ctx: model.MessageContext, attrs: *const PathAttributes) usize {
+fn calculateAttributesLength(attrs: *const AttributeList) usize {
     var result: usize = 0;
 
-    // Origin: Flags(1) + Type(1) + Len(1) + Val(1)
-    result += 4;
-
-    // AS Path: Flags(1) + Type(1) + Len(1 or 2) + Data
-    const asPathDataLen = calculateASPathByteLength(&attrs.asPath.value);
-    result += 2; // Flags + Type
-    result += if (asPathDataLen > 255) @as(usize, 2) else @as(usize, 1); // Length field
-    result += asPathDataLen;
-
-    // Nexthop: Flags(1) + Type(1) + Len(1) + Val(4)
-    result += 7;
-
-    // Local Pref
-    if (ctx.peerType.? == .Internal) {
-        result += 7;
+    for (attrs.list.items) |*attr| {
+        result += size: switch (attr.*) {
+            .Origin => 4, // Origin: Flags(1) + Type(1) + Len(1) + Val(1)
+            .AsPath => |*asPath| {
+                // AS Path: Flags(1) + Type(1) + Len(1 or 2) + Data
+                const asPathDataLen = calculateASPathByteLength(&asPath.value);
+                var tmp: usize = 0;
+                tmp += 2; // Flags + Type
+                tmp += if (asPathDataLen > 255) @as(usize, 2) else @as(usize, 1); // Length field
+                tmp += asPathDataLen;
+                break :size tmp;
+            },
+            .Nexthop => 7, // Nexthop: Flags(1) + Type(1) + Len(1) + Val(4)
+            .LocalPref => 7,
+            else => 0,
+        };
     }
 
     return result;
 }
 
-fn writeLocalPref(writer: *std.Io.Writer, attrs: * const PathAttributes) !void {
-    try writer.writeInt(u32, attrs.localPref.value, .big);
+fn writeLocalPref(writer: *std.Io.Writer, localPref: * const ribModel.LocalPrefAttr) !void {
+    try writer.writeInt(u32, localPref.value, .big);
 }
 
-fn writeAttributes(ctx: model.MessageContext, attrs: *const PathAttributes, writer: *std.Io.Writer) !void {
+fn writeAttributes(attrs: *const AttributeList, writer: *std.Io.Writer) !void {
     // TODO: For well-known attributes, the Transitive bit MUST be set to 1.
 
-    // Origin
-    try writer.writeInt(u8, attrs.origin.flags, .big);
-    try writer.writeInt(u8, 1, .big);
-    try writer.writeInt(u8, 1, .big);
-    try writer.writeInt(u8, @intFromEnum(attrs.origin.value), .big);
-
-    // AS Path
-    const asPath = &attrs.asPath.value;
-    const asPathDataLen = calculateASPathByteLength(asPath);
-    const isExtendedLen = asPathDataLen > 255;
-    if (isExtendedLen) {
-        try writer.writeInt(u8, attrs.asPath.flags | model.ATTR_EXTENDED_LENGTH_FLAG, .big);
-    } else {
-        try writer.writeInt(u8, attrs.asPath.flags, .big);
-    }
-    try writer.writeInt(u8, 2, .big);
-    if (isExtendedLen) {
-        try writer.writeInt(u16, @intCast(asPathDataLen), .big);
-    } else {
-        try writer.writeInt(u8, @intCast(asPathDataLen), .big);
-    }
-    for (asPath.segments) |segment| {
-        try writer.writeInt(u8, @intFromEnum(segment.segType), .big);
-        try writer.writeInt(u8, @intCast(segment.contents.len), .big);
-        for (segment.contents) |asn| {
-            try writer.writeInt(u16, asn, .big);
+    for (attrs.list.items) |*attr| {
+        switch (attr.*) {
+            .Origin => |*origin| {
+                try writer.writeInt(u8, origin.flags, .big);
+                try writer.writeInt(u8, 1, .big);
+                try writer.writeInt(u8, 1, .big);
+                try writer.writeInt(u8, @intFromEnum(origin.value), .big);
+            },
+            .AsPath => |*asPath| {
+                // AS Path
+                const asPathDataLen = calculateASPathByteLength(&asPath.value);
+                const isExtendedLen = asPathDataLen > 255;
+                if (isExtendedLen) {
+                    try writer.writeInt(u8, asPath.flags | messageModel.ATTR_EXTENDED_LENGTH_FLAG, .big);
+                } else {
+                    try writer.writeInt(u8, asPath.flags, .big);
+                }
+                try writer.writeInt(u8, 2, .big);
+                if (isExtendedLen) {
+                    try writer.writeInt(u16, @intCast(asPathDataLen), .big);
+                } else {
+                    try writer.writeInt(u8, @intCast(asPathDataLen), .big);
+                }
+                for (asPath.value.segments) |segment| {
+                    try writer.writeInt(u8, @intFromEnum(segment.segType), .big);
+                    try writer.writeInt(u8, @intCast(segment.contents.len), .big);
+                    for (segment.contents) |asn| {
+                        try writer.writeInt(u16, asn, .big);
+                    }
+                }
+            },
+            .Nexthop => |*nexthop| {
+                try writer.writeInt(u8, nexthop.flags, .big);
+                try writer.writeInt(u8, 3, .big);
+                try writer.writeInt(u8, 4, .big);
+                try writer.writeAll(&nexthop.value.address);
+            },
+            .LocalPref => |*localPref| {
+                try writer.writeInt(u8, localPref.flags, .big);
+                try writer.writeInt(u8, 5, .big);
+                try writer.writeInt(u8, 4, .big);
+                try writeLocalPref(writer, localPref);
+            },
+            else => {},
         }
-    }
-
-    // Nexthop
-    try writer.writeInt(u8, attrs.nexthop.flags, .big);
-    try writer.writeInt(u8, 3, .big);
-    try writer.writeInt(u8, 4, .big);
-    try writer.writeAll(&attrs.nexthop.value.address);
-
-    // Local Pref
-    if (ctx.peerType.? == .Internal) {
-        try writer.writeInt(u8, attrs.localPref.flags, .big);
-        try writer.writeInt(u8, 5, .big);
-        try writer.writeInt(u8, 4, .big);
-        try writeLocalPref(writer, attrs);
     }
 }
 
-pub fn writeUpdateBody(ctx: model.MessageContext, msg: model.UpdateMessage, writer: *std.Io.Writer) !void {
+pub fn writeUpdateBody(msg: messageModel.UpdateMessage, writer: *std.Io.Writer) !void {
     std.log.debug(
-        "sending UPDATE(withdrawn={d}, advertised={d}, origin={s}, aspath={f})", 
-        .{msg.withdrawnRoutes.len, msg.advertisedRoutes.len, @tagName(msg.pathAttributes.?.origin.value), msg.pathAttributes.?.asPath.value} 
+        "sending UPDATE(withdrawn={d}, advertised={d}, attrs count={d})", 
+        .{msg.withdrawnRoutes.len, msg.advertisedRoutes.len, msg.pathAttributes.list.items.len} 
     );
 
     try writer.writeInt(u16, @intCast(calculateRoutesLength(msg.withdrawnRoutes)), .big);
     try writeRoutes(msg.withdrawnRoutes, writer);
 
-    if (msg.pathAttributes) |*attrs| {
-        try writer.writeInt(u16, @intCast(calculateAttributesLength(ctx, attrs)), .big);
-        try writeAttributes(ctx, attrs, writer);
+    try writer.writeInt(u16, @intCast(calculateAttributesLength(&msg.pathAttributes)), .big);
+    try writeAttributes(&msg.pathAttributes, writer);
 
-        try writeRoutes(msg.advertisedRoutes, writer);
-    }
+    try writeRoutes(msg.advertisedRoutes, writer);
 }
 
 const testing = std.testing;
 
 test "calculateRoutesLength()" {
-    try testing.expectEqual(0, calculateRoutesLength(&[_]model.Route{}));
-    try testing.expectEqual(16, calculateRoutesLength(&[_]model.Route{
-        model.Route{
+    try testing.expectEqual(0, calculateRoutesLength(&[_]messageModel.Route{}));
+    try testing.expectEqual(16, calculateRoutesLength(&[_]messageModel.Route{
+        messageModel.Route{
             .prefixLength = 16,
             .prefixData = [4]u8{ 0, 0, 0, 0 },
         },
-        model.Route{
+        messageModel.Route{
             .prefixLength = 12,
             .prefixData = [4]u8{ 0, 0, 0, 0 },
         },
-        model.Route{
+        messageModel.Route{
             .prefixLength = 32,
             .prefixData = [4]u8{ 0, 0, 0, 0 },
         },
-        model.Route{
+        messageModel.Route{
             .prefixLength = 31,
             .prefixData = [4]u8{ 0, 0, 0, 0 },
         },
@@ -153,20 +159,20 @@ test "calculateRoutesLength()" {
 }
 
 test "writeRoutes()" {
-    const testRoutes = [_]model.Route{
-        model.Route{
+    const testRoutes = [_]messageModel.Route{
+        messageModel.Route{
             .prefixLength = 16,
             .prefixData = [4]u8{ 0xff, 0xff, 0, 0 },
         },
-        model.Route{
+        messageModel.Route{
             .prefixLength = 12,
             .prefixData = [4]u8{ 0, 0xff, 0, 0 },
         },
-        model.Route{
+        messageModel.Route{
             .prefixLength = 32,
             .prefixData = [4]u8{ 127, 0, 42, 69 },
         },
-        model.Route{
+        messageModel.Route{
             .prefixLength = 31,
             .prefixData = [4]u8{ 127, 0, 42, 69 },
         },
@@ -194,46 +200,43 @@ test "writeUpdateBody() - External Peer" {
     const asPath = asPathInit: {
         const referencePath: AsPath = .{
             .allocator = testing.allocator,
-            .segments = &[_]model.ASPathSegment{
+            .segments = &[_]messageModel.ASPathSegment{
                 .{.allocator = testing.allocator, .segType = .AS_Set, .contents = &[_]u16{69}}
             },
         };
         break :asPathInit try referencePath.clone(testing.allocator);
     };
-    defer asPath.deinit();
 
-    const msg = try model.UpdateMessage.init(
+    var list = std.ArrayListUnmanaged(PathAttribute){};
+    try list.append(testing.allocator, .{ .Origin = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = .EGP } });
+    try list.append(testing.allocator, .{ .AsPath = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = asPath } });
+    try list.append(testing.allocator, .{ .Nexthop = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) } });
+    try list.append(testing.allocator, .{ .LocalPref = .init(100) });
+    const attrs = AttributeList{ .alloc = testing.allocator, .list = list };
+
+    const msg = try messageModel.UpdateMessage.init(
         testing.allocator, 
-        &[_]model.Route{ 
-            model.Route{
+        &[_]messageModel.Route{ 
+            messageModel.Route{
                 .prefixLength = 16,
                 .prefixData = [4]u8{ 0xff, 0xff, 0, 0 },
             }, 
-            model.Route{
+            messageModel.Route{
                 .prefixLength = 12,
                 .prefixData = [4]u8{ 0, 0xff, 0, 0 },
             } 
         }, 
-        &[_]model.Route{
-            model.Route{
+        &[_]messageModel.Route{
+            messageModel.Route{
                 .prefixLength = 32,
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
-            model.Route{
+            messageModel.Route{
                 .prefixLength = 31,
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
         }, 
-        PathAttributes{
-            .allocator = testing.allocator, 
-            .origin = .{ .flags = model.ATTR_TRANSITIVE_FLAG, .value = .EGP }, 
-            .asPath = .{ .flags = model.ATTR_TRANSITIVE_FLAG, .value = asPath }, 
-            .nexthop = .{ .flags = model.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) }, 
-            .localPref = .init(100), 
-            .atomicAggregate = .init(false), 
-            .multiExitDiscriminator = null, 
-            .aggregator = null
-        },
+        attrs,
     );
     defer msg.deinit();
 
@@ -259,8 +262,7 @@ test "writeUpdateBody() - External Peer" {
     var writer = std.Io.Writer.Allocating.init(testing.allocator);
     defer writer.deinit();
 
-    const ctx = model.MessageContext{ .peerType = .External };
-    try writeUpdateBody(ctx, msg, &writer.writer);
+    try writeUpdateBody(msg, &writer.writer);
 
     const writtenBuffer = try writer.toOwnedSlice();
     defer testing.allocator.free(writtenBuffer);
@@ -271,46 +273,43 @@ test "writeUpdateBody() - Internal Peer" {
     const asPath = asPathInit: {
         const referencePath: AsPath = .{
             .allocator = testing.allocator,
-            .segments = &[_]model.ASPathSegment{
+            .segments = &[_]messageModel.ASPathSegment{
                 .{.allocator = testing.allocator, .segType = .AS_Set, .contents = &[_]u16{69}}
             },
         };
         break :asPathInit try referencePath.clone(testing.allocator);
     };
-    defer asPath.deinit();
 
-    const msg = try model.UpdateMessage.init(
+    var list = std.ArrayListUnmanaged(PathAttribute){};
+    try list.append(testing.allocator, .{ .Origin = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = .EGP } });
+    try list.append(testing.allocator, .{ .AsPath = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = asPath } });
+    try list.append(testing.allocator, .{ .Nexthop = .{ .flags = messageModel.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) } });
+    try list.append(testing.allocator, .{ .LocalPref = .init(100) });
+    const attrs = AttributeList{ .alloc = testing.allocator, .list = list };
+
+    const msg = try messageModel.UpdateMessage.init(
         testing.allocator, 
-        &[_]model.Route{ 
-            model.Route{
+        &[_]messageModel.Route{ 
+            messageModel.Route{
                 .prefixLength = 16,
                 .prefixData = [4]u8{ 0xff, 0xff, 0, 0 },
             }, 
-            model.Route{
+            messageModel.Route{
                 .prefixLength = 12,
                 .prefixData = [4]u8{ 0, 0xff, 0, 0 },
             } 
         }, 
-        &[_]model.Route{
-            model.Route{
+        &[_]messageModel.Route{
+            messageModel.Route{
                 .prefixLength = 32,
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
-            model.Route{
+            messageModel.Route{
                 .prefixLength = 31,
                 .prefixData = [4]u8{ 127, 0, 42, 69 },
             },
         }, 
-        PathAttributes{
-            .allocator = testing.allocator, 
-            .origin = .{ .flags = model.ATTR_TRANSITIVE_FLAG, .value = .EGP }, 
-            .asPath = .{ .flags = model.ATTR_TRANSITIVE_FLAG, .value = asPath }, 
-            .nexthop = .{ .flags = model.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(0, 0, 0, 0) }, 
-            .localPref = .init(100), 
-            .atomicAggregate = .init(false), 
-            .multiExitDiscriminator = null, 
-            .aggregator = null
-        },
+        attrs,
     );
     // Let's set the flags on localPref to 0x40 (Transitive) just in case, though it's typically 0x40 for well-known
     // Actually the default flags is 0, let's keep it 0 as the other test doesn't set it 
@@ -340,8 +339,7 @@ test "writeUpdateBody() - Internal Peer" {
     var writer = std.Io.Writer.Allocating.init(testing.allocator);
     defer writer.deinit();
 
-    const ctx = model.MessageContext{ .peerType = .Internal };
-    try writeUpdateBody(ctx, msg, &writer.writer);
+    try writeUpdateBody(msg, &writer.writer);
 
     const writtenBuffer = try writer.toOwnedSlice();
     defer testing.allocator.free(writtenBuffer);
