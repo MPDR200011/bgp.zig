@@ -1,8 +1,9 @@
 ## TODOs
 
-- [ ] Route origination
-- [ ] Transmit unrecognized optional transitive attributes
-- [ ] Rename Path -> Route
+- FIXME: AS Path Loop detection
+- Route origination
+- Transmit unrecognized optional transitive attributes
+- Rename Path -> Route
 - MinRouteAdvertisementIntervalTimer
 - Phase 2: Route Selection
 - "The Phase 2 decision function is blocked from running while the Phase 3

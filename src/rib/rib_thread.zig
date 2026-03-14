@@ -7,6 +7,7 @@ const model = @import("model.zig");
 const common = @import("common.zig");
 const utils = @import("utils.zig");
 const messageModel = @import("../messaging/model.zig");
+const session = @import("../sessions/session.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -14,6 +15,7 @@ const PeerMap = @import("../peer_map.zig").PeerMap;
 const AdjRibInManager = adjRibManager.AdjRibInManager;
 const AdjRibOutManager = adjRibManager.AdjRibOutManager;
 const RibManager = mainRibManager.RibManager;
+const Peer = session.Peer;
 
 const RouteUpdate = std.meta.Tuple(&.{ model.Route, common.RoutePath });
 
@@ -99,6 +101,13 @@ fn aggregateRouteUpdates(alloc: Allocator, updates: *UpdatesList) !AggregatedRou
     return aggregate;
 }
 
+fn ensurePeerRoutesDropped(peer: *const Peer, mainRib: *RibManager) void {
+    var mainIt = mainRib.rib.prefixes.iterator();
+    while (mainIt.next()) |mainEntry| {
+        mainEntry.value_ptr.removePath(.{ .neighbor = .{ .V4 = peer.sessionAddresses.peerAddress } });
+    }
+}
+
 fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibInManager, mainRib: *RibManager) !SyncResult {
     var res: SyncResult = .init;
     errdefer res.deinit(alloc);
@@ -106,7 +115,6 @@ fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibInManager, mainRib
     // Check for dropped routes
     var mainIt = mainRib.rib.prefixes.iterator();
     while (mainIt.next()) |mainEntry| {
-        // FIXME: AS Path Loop detection
 
         // Check if route has path from this neighbor
         if (!mainEntry.value_ptr.paths.contains(.{ .neighbor = adjRib.neighbor })) {
@@ -231,6 +239,8 @@ pub const SyncTask = struct {
             // Lock the session to grab the adjIn reference
             peer.session.mutex.lock();
             if (peer.session.state != .ESTABLISHED) {
+                ensurePeerRoutesDropped(peer, ctx.mainRib);
+
                 peer.session.mutex.unlock();
                 continue;
             }
