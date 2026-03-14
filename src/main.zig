@@ -133,6 +133,7 @@ pub fn main() !void {
     const localPort = processConfig.localConfig.localPort orelse 179;
 
     var mainRib = try ribManager.RibManager.init(gpa);
+    defer mainRib.deinit();
 
     std.log.info("Initializing peer map", .{});
 
@@ -256,4 +257,6 @@ test {
     _ = @import("rib/adj_rib.zig");
     _ = @import("rib/rib_thread.zig");
     _ = @import("rib/common.zig");
+    _ = @import("rib/model.zig");
+    _ = @import("rib/utils.zig");
 }

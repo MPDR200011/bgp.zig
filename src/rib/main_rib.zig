@@ -1,7 +1,7 @@
 const std = @import("std");
 const ip = @import("ip");
 
-const model = @import("../messaging/model.zig");
+const model = @import("./model.zig");
 
 const common = @import("./common.zig");
 
@@ -97,8 +97,8 @@ const RibEntry = struct {
         }
 
         const path = self.paths.getPtr(advertiser) orelse return;
-
         path.deinit();
+
         _ = self.paths.remove(advertiser);
     }
 };

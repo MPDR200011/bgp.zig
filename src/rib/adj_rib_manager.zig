@@ -4,7 +4,7 @@ const xev = @import("xev");
 
 const adjRib = @import("adj_rib.zig");
 const debounced = @import("../utils/debounced.zig");
-const model = @import("../messaging/model.zig");
+const model = @import("../rib/model.zig");
 const common = @import("common.zig");
 
 const Allocator = std.mem.Allocator;

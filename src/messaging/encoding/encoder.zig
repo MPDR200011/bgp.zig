@@ -21,7 +21,7 @@ pub const MessageEncoder = struct {
 
     pub fn deinit(_: Self) void {}
 
-    pub fn writeMessage(self: *Self, ctx: model.MessageContext, msg: model.BgpMessage, messageWriter: *std.io.Writer) !void {
+    pub fn writeMessage(self: *Self, msg: model.BgpMessage, messageWriter: *std.io.Writer) !void {
         // TODO implement message size limits
 
         // TODO decide if I want to allocate a buffer everytime or just get a
@@ -40,7 +40,7 @@ pub const MessageEncoder = struct {
                 try notificationMessage.writeNotification(notification, bodyWriterItf);
             },
             .UPDATE => |update| {
-                try updateMessage.writeUpdateBody(ctx, update, bodyWriterItf);
+                try updateMessage.writeUpdateBody(update, bodyWriterItf);
             },
             .KEEPALIVE => {},
         }

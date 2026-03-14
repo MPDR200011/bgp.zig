@@ -1,7 +1,7 @@
 const std = @import("std");
 const ip = @import("ip");
 
-const model = @import("../messaging/model.zig");
+const model = @import("model.zig");
 
 const Allocator = std.mem.Allocator;
 

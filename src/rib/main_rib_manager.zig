@@ -4,7 +4,7 @@ const xev = @import("xev");
 
 const rib = @import("main_rib.zig");
 const debounced = @import("../utils/debounced.zig");
-const model = @import("../messaging/model.zig");
+const model = @import("../rib/model.zig");
 const common = @import("common.zig");
 
 const DoublyLinkedList = std.DoublyLinkedList;

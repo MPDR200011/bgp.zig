@@ -14,6 +14,9 @@ const activeHandler = @import("handlers/active.zig");
 const openSentHandler = @import("handlers/open_sent.zig");
 const openConfirmHandler = @import("handlers/open_confirm.zig");
 const establishedHandler = @import("handlers/established.zig");
+const ribModel = @import("../rib/model.zig");
+
+const ribUtils = @import("../rib/utils.zig");
 
 const ribManager = @import("../rib/main_rib_manager.zig");
 const adjRibManager = @import("../rib/adj_rib_manager.zig");
@@ -60,6 +63,18 @@ pub const Event = union(enum) {
     OpenCollisionDump: CollisionContext,
     UpdateReceived: messageModel.UpdateMessage,
     NotificationReceived: messageModel.NotificationMessage,
+
+    pub fn deinit(self: *@This()) void {
+        switch (self.*) {
+            .UpdateReceived => |*msg| {
+                msg.deinit();
+            },
+            .NotificationReceived => |*msg| {
+                msg.deinit();
+            },
+            else => {},
+        }
+    }
 };
 
 pub const PostHandlerAction = union(enum) {
@@ -288,9 +303,7 @@ pub const Session = struct {
         var connectionWriter = connection.writer(&writeBuffer);
 
         
-        try self.messageEncoder.writeMessage(.{
-            .peerType = if (self.info != null) self.info.?.peerType else null
-        }, msg, &connectionWriter.interface);
+        try self.messageEncoder.writeMessage(msg, &connectionWriter.interface);
 
         std.log.debug("Sent message", .{});
 
@@ -410,6 +423,9 @@ pub const Session = struct {
     }
 
     pub fn handleEvent(self: *Self, event: Event) void {
+        // TODO: find way to not have to do this...
+        defer @constCast(&event).deinit();
+
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -423,34 +439,24 @@ pub const Session = struct {
 
         switch (nextAction) {
             .Transition => |nextState| self.switchState(nextState),
-            .Keep => return,
-        }
-
-
-        switch (event) {
-            .OpenReceived => |msg| {
-                self.messageReader.deInitMessage(.{ .OPEN = msg });
-            },
-            .UpdateReceived => |msg| {
-                self.messageReader.deInitMessage(.{ .UPDATE = msg });
-            },
-            .NotificationReceived => |msg| {
-                self.messageReader.deInitMessage(.{ .NOTIFICATION = msg });
-            },
-            .OpenCollisionDump => |ctx| {
-                self.messageReader.deInitMessage(.{ .OPEN = ctx.openMsg });
-            },
-            else => {},
+            .Keep => {},
         }
     }
 
     pub fn processUpdateMsg(self: *Self, msg: messageModel.UpdateMessage) !void {
+        const pathAttributes: ?ribModel.PathAttributes = try ribUtils.convertAttributeListToUnifiedStruct(self.allocator, self.info.?.peerType, msg.pathAttributes);
+        defer {
+            if (pathAttributes) |attrs| {
+                attrs.deinit();
+            }
+        }
+
         for (msg.withdrawnRoutes) |route| {
             self.adjRibInManager.?.removePath(route);
         }
 
         for (msg.advertisedRoutes) |route| {
-            try self.adjRibInManager.?.setPath(route, msg.pathAttributes.?);
+            try self.adjRibInManager.?.setPath(route, pathAttributes.?);
         }
     }
 };

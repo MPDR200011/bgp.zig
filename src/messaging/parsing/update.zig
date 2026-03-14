@@ -1,9 +1,11 @@
 const std = @import("std");
 const ip = @import("ip");
-const model = @import("../model.zig");
+const ribModel = @import("../../rib/model.zig");
+const messageModel = @import("../model.zig");
 
-const Route = model.Route;
-const PathAttributes = model.PathAttributes;
+const Route = ribModel.Route;
+const PathAttribute = messageModel.PathAttribute;
+const AttributeList = messageModel.AttributeList;
 
 const UpdateParsingError = error{ 
 RoutesLengthInconsistent, 
@@ -67,32 +69,36 @@ fn readRoutes(self: *Self, routesLength: u16) !std.array_list.Managed(Route) {
     return routesList;
 }
 
-fn readOrigin(self: *Self) !model.Origin {
+fn readOrigin(self: *Self) !ribModel.Origin {
     // TODO: origin value validation
-    const origin: model.Origin = @enumFromInt(try self.reader.takeInt(u8, .big));
+    const origin: ribModel.Origin = @enumFromInt(try self.reader.takeInt(u8, .big));
     return origin;
 }
 
-fn readAsPath(self: *Self, bytesLength: u16) !model.ASPath {
-    var pathSegments: std.ArrayList(model.ASPathSegment) = .empty;
+fn readAsPath(self: *Self, bytesLength: u16) !ribModel.ASPath {
+    var pathSegments: std.ArrayList(ribModel.ASPathSegment) = .empty;
     defer pathSegments.deinit(self.allocator);
+    errdefer {
+        for (pathSegments.items) |*seg| {
+            seg.deinit();
+        }
+    }
 
     var currentRead: usize = 0;
     while (currentRead < bytesLength) {
         // TODO: segment type value validation
-        const segmentType: model.ASPathSegmentType = @enumFromInt(try self.reader.takeInt(u8, .big));
+        const segmentType: ribModel.ASPathSegmentType = @enumFromInt(try self.reader.takeInt(u8, .big));
         const segmentLength: usize = @intCast(try self.reader.takeInt(u8, .big));
 
         const segmentContents = try self.allocator.alloc(u16, segmentLength);
         for (0..segmentLength) |i| {
             segmentContents[i] = try self.reader.takeInt(u16, .big);
         }
-        const segment = try pathSegments.addOne(self.allocator);
-        segment.* = .{
+        try pathSegments.append(self.allocator, .{
             .allocator = self.allocator,
             .segType = segmentType,
             .contents = segmentContents,
-        };
+        });
 
         currentRead += (2 + (segmentLength * 2));
     }
@@ -103,7 +109,7 @@ fn readAsPath(self: *Self, bytesLength: u16) !model.ASPath {
 
     return .{
         .allocator = self.allocator,
-        .segments = try self.allocator.dupe(model.ASPathSegment, pathSegments.items),
+        .segments = try self.allocator.dupe(ribModel.ASPathSegment, pathSegments.items),
     };
 }
 
@@ -117,66 +123,107 @@ fn readLocalPref(self: *Self) !u32 {
     return try self.reader.takeInt(u32, .big);
 }
 
-fn readAttributes(self: *Self, attributesLength: u16) !PathAttributes {
-    var attributes: PathAttributes = .empty;
-    attributes.allocator = self.allocator;
+fn readAggregator(self: *Self) !ribModel.Aggregator {
+    var agg: ribModel.Aggregator = .{
+        .as = try self.reader.takeInt(u16, .big),
+        .address = undefined
+    };
+    try self.reader.readSliceAll(&agg.address.address);
+    return agg;
+}
 
-    // Set local pref to the default value
-    attributes.localPref.flags = 0;
-    attributes.localPref.value = 100;
+fn readUnknownAttributeValue(self: *Self, len: u16) ![]u8 {
+    const buffer = try self.allocator.alloc(u8, len);
+    errdefer self.allocator.free(buffer);
 
-    var originRead: bool = false;
-    var asPathRead: bool = false;
-    var nextHopRead: bool = false;
+    try self.reader.readSliceAll(buffer);
+
+    return buffer;
+}
+
+fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
+    var attributes: AttributeList = .{
+        .alloc = self.allocator,
+        .list = .empty
+    };
+    errdefer {
+        attributes.deinit();
+    }
 
     var bytesToRead: i32 = @intCast(attributesLength);
     while (bytesToRead > 0) {
         const attributeFlags = try self.reader.takeInt(u8, .big);
         const attributeType = try self.reader.takeInt(u8, .big);
 
-        const extendedLength: bool = (attributeFlags & model.ATTR_EXTENDED_LENGTH_FLAG) > 0;
+        const extendedLength: bool = (attributeFlags & ribModel.ATTR_EXTENDED_LENGTH_FLAG) > 0;
         const attributeLength: u16 = if (extendedLength) try self.reader.takeInt(u16, .big) else @intCast(try self.reader.takeInt(u8, .big));
 
         // TODO: Unrecognized non-transitive optional attributes MUST be
         // quietly ignored and not passed along to other BGP peers.
-        switch (attributeType) {
+        const attribute: PathAttribute = attr: switch (attributeType) {
             1 => {
-                attributes.origin = .{ .flags = attributeFlags, .value = try self.readOrigin() };
-                originRead = true;
+                break :attr .{ .Origin = .{
+                    .flags = attributeFlags,
+                    .value = try self.readOrigin(),
+                } };
             },
             2 => {
-                attributes.asPath = .{ .flags = attributeFlags, .value = try self.readAsPath(attributeLength) };
-                asPathRead = true;
+                break :attr .{ .AsPath = .{
+                    .flags = attributeFlags,
+                    .value = try self.readAsPath(attributeLength),
+                } };
             },
             3 => {
                 std.debug.assert(attributeLength == 4);
-                attributes.nexthop = .{ .flags = attributeFlags, .value = try self.readNextHop() };
-                nextHopRead = true;
+                break :attr .{ .Nexthop = .{
+                    .flags = attributeFlags,
+                    .value = try self.readNextHop(),
+                } };
+            },
+            4 => {
+                break :attr .{ .MultiExitDiscriminator = .{
+                    .flags = attributeFlags,
+                    .value = try self.reader.takeInt(u32, .big),
+                } };
             },
             5 => {
                 // FIXME make sure localPref flags are properly set
                 std.debug.assert(attributeLength == 4);
-                attributes.localPref = .{ .flags = attributeFlags, .value = try self.readLocalPref() };
+                break :attr .{ .LocalPref = .{
+                    .flags = attributeFlags,
+                    .value = try self.readLocalPref(),
+                } };
+            },
+            6 => {
+                break :attr .{ .AtomicAggregate = .{
+                    .flags = attributeFlags,
+                    .value = true
+                }};
+            },
+            7 => {
+                break :attr .{ .Aggregator = .{
+                    .flags = attributeFlags,
+                    .value = try self.readAggregator(),
+                }};
             },
             else => {
                 // Ignore unknown attribute
-                try self.reader.discardAll(attributeLength);
+                break :attr .{ .Unknown = .{
+                    .flags = attributeFlags,
+                    .value = .{
+                        .allocator = self.allocator,
+                        .typeCode = attributeType,
+                        .value = try self.readUnknownAttributeValue(attributeLength),
+                    },
+                } };
             },
-        }
+        };
+
+        try attributes.list.append(self.allocator, attribute);
 
         bytesToRead -= 2; // For attributeFlags and attributeType
         bytesToRead -= if (extendedLength) 2 else 1; // For attributeLength field itself
         bytesToRead -= attributeLength; // For the attribute value
-    }
-
-    if (!originRead) {
-        return UpdateParsingError.MissingOriginAttribute;
-    }
-    if (!asPathRead) {
-        return UpdateParsingError.MissingASPathAttribute;
-    }
-    if (!nextHopRead) {
-        return UpdateParsingError.MissingNexthopAttribute;
     }
 
     if (bytesToRead != 0) {
@@ -186,7 +233,7 @@ fn readAttributes(self: *Self, attributesLength: u16) !PathAttributes {
     return attributes;
 }
 
-pub fn readUpdateMessage(self: *Self, messageLength: u16) !model.UpdateMessage {
+pub fn readUpdateMessage(self: *Self, messageLength: u16) !messageModel.UpdateMessage {
     const withdrawnLength = try self.reader.takeInt(u16, .big);
     const withdrawnRoutes = try self.readRoutes(withdrawnLength);
     defer withdrawnRoutes.deinit();
@@ -197,10 +244,14 @@ pub fn readUpdateMessage(self: *Self, messageLength: u16) !model.UpdateMessage {
         if (advertisedLength != 0) {
             return error.AdvertisedRoutesWithoutAttrs;
         }
-        return .init(self.allocator, withdrawnRoutes.items, self.allocator.alloc(Route, 0) catch unreachable, null);
+        const attrs: AttributeList = .{
+            .alloc = self.allocator,
+            .list = .empty
+        };
+        return .init(self.allocator, withdrawnRoutes.items, self.allocator.alloc(Route, 0) catch unreachable, attrs);
     } else {
-        const routeAttributes = try self.readAttributes(attributesLength);
-        defer routeAttributes.deinit();
+        var routeAttributes = try self.readAttributes(attributesLength);
+        errdefer routeAttributes.deinit();
 
         const advertisedRoutes = try self.readRoutes(advertisedLength);
         defer advertisedRoutes.deinit();
@@ -297,91 +348,30 @@ test "readRoutes()" {
     try testing.expectEqualSlices(Route, expectedRoutes[0..], routes.items);
 }
 
-test "readUpdateMessage()" {
+test "readUpdateMessage() - Minimal (Withdrawn only)" {
     const messageBuffer = [_]u8{
-        //Withdrawn length
-        0,
-        3,
-        // R3
-        // Length
-        12,
-        // Route
-        192,
-        0b10111111,
-        // Attributes Length
-        0,
-        20,
-        // Origin
-        0x40,
-        1,
-        1,
-        0,
-        // ASPath
-        0x40,
-        2,
-        6,
-        2,
-        2,
-        0,
-        100,
-        0,
-        200,
-        // NextHop
-        0x40,
-        3,
-        4,
-        192,
-        168,
-        0,
-        1,
-        // Advertised
-        // R1
-        // Length
-        32,
-        // Route
-        192,
-        168,
-        0,
-        42,
-        // R2
-        // Length
-        16,
-        // Route
-        192,
-        168,
+        0, 3, // Withdrawn length: 3
+        12, 192, 0b10111111, // R3: 192.176.0.0/12 (roughly)
+        0, 0, // Attributes length: 0
     };
 
-    var stream = std.io.fixedBufferStream(messageBuffer[0..]);
-
+    var stream = std.io.fixedBufferStream(&messageBuffer);
     var readBuffer: [1024]u8 = undefined;
     var reader = stream.reader().adaptToNewApi(&readBuffer);
-    var updateReader = Self{
+    var updateReader = UpdateMsgParser{
         .allocator = testing.allocator,
         .reader = &reader.new_interface,
     };
-    const message = try updateReader.readUpdateMessage(@intCast(messageBuffer.len));
+    var message = try updateReader.readUpdateMessage(@intCast(messageBuffer.len));
     defer message.deinit();
 
     try testing.expectEqual(stream.getPos(), messageBuffer.len);
-
-    try testing.expectEqualSlices(Route, &[_]Route{Route{ .prefixLength = 12, .prefixData = [_]u8{ 192, 0b10110000, 0, 0 } }}, message.withdrawnRoutes);
-    try testing.expectEqualSlices(Route, &[_]Route{
-        Route{ .prefixLength = 32, .prefixData = [_]u8{ 192, 168, 0, 42 } },
-        Route{ .prefixLength = 16, .prefixData = [_]u8{ 192, 168, 0, 0 } },
-    }, message.advertisedRoutes);
-    // Verify attribute values
-    try testing.expect(message.pathAttributes != null);
-    const attrs = message.pathAttributes.?;
-    try testing.expectEqual(model.Origin.IGP, attrs.origin.value);
-
-    try testing.expectEqual(@as(usize, 1), attrs.asPath.value.segments.len);
-    try testing.expectEqual(model.ASPathSegmentType.AS_Sequence, attrs.asPath.value.segments[0].segType);
-    try testing.expectEqualSlices(u16, &[_]u16{ 100, 200 }, attrs.asPath.value.segments[0].contents);
-
-    try testing.expect(attrs.nexthop.value.equals(ip.IpV4Address.parse("192.168.0.1") catch unreachable));
+    try testing.expectEqual(@as(usize, 1), message.withdrawnRoutes.len);
+    try testing.expectEqual(@as(usize, 0), message.advertisedRoutes.len);
+    try testing.expectEqual(@as(usize, 0), message.pathAttributes.list.items.len);
 }
 
-fn testReadAsPath(asPathBuffer: []const u8, expectedASPath: model.ASPath) !void {
+fn testReadAsPath(asPathBuffer: []const u8, expectedASPath: ribModel.ASPath) !void {
     var stream = std.io.fixedBufferStream(asPathBuffer[0..]);
     var readBuffer: [1024]u8 = undefined;
     var reader = stream.reader().adaptToNewApi(&readBuffer);
@@ -404,13 +394,13 @@ test "readAsPath()" {
         0, 100, // ASN 100
         0, 200, // ASN 200
     };
-    const segments1 = try testing.allocator.alloc(model.ASPathSegment, 1);
+    const segments1 = try testing.allocator.alloc(ribModel.ASPathSegment, 1);
     segments1[0] = .{
         .allocator = testing.allocator,
         .segType = .AS_Sequence,
         .contents = try testing.allocator.dupe(u16, &[_]u16{ 100, 200 }),
     };
-    const expected1 = model.ASPath{
+    const expected1 = ribModel.ASPath{
         .allocator = testing.allocator,
         .segments = segments1,
     };
@@ -427,7 +417,7 @@ test "readAsPath()" {
         0, 200, // ASN 200
         0, 201, // ASN 201
     };
-    const segments2 = try testing.allocator.alloc(model.ASPathSegment, 2);
+    const segments2 = try testing.allocator.alloc(ribModel.ASPathSegment, 2);
     segments2[0] = .{
         .allocator = testing.allocator,
         .segType = .AS_Sequence,
@@ -438,7 +428,7 @@ test "readAsPath()" {
         .segType = .AS_Set,
         .contents = try testing.allocator.dupe(u16, &[_]u16{ 200, 201 }),
     };
-    const expected2 = model.ASPath{
+    const expected2 = ribModel.ASPath{
         .allocator = testing.allocator,
         .segments = segments2,
     };
@@ -446,57 +436,56 @@ test "readAsPath()" {
     try testReadAsPath(&buffer2, expected2);
 }
 
-test "readNextHop()" {
-    const buffer = [_]u8{ 192, 168, 0, 1 };
-    var stream = std.io.fixedBufferStream(&buffer);
-    var readBuffer: [1024]u8 = undefined;
-    var reader = stream.reader().adaptToNewApi(&readBuffer);
-    var updateReader = Self{
-        .allocator = testing.allocator,
-        .reader = &reader.new_interface,
-    };
+test "readUpdateMessage() - All Attributes" {
+    const unknownDataShort = [_]u8{ 1, 2, 3 };
+    var unknownDataLong: [300]u8 = undefined;
+    @memset(&unknownDataLong, 0xAA);
 
-    const actualNextHop = try updateReader.readNextHop();
-    try testing.expect(actualNextHop.equals(ip.IpV4Address.parse("192.168.0.1") catch unreachable));
-}
-
-test "readAttributes compound test" {
-    const attributesBuffer = [_]u8{
-        // Origin (Well-known mandatory)
-        0x40, // Flags (Transitive)
-        1,    // Type
-        1,    // Length
-        0,    // Value (IGP)
+    const messageBuffer = blk: {
+        var list = std.array_list.Managed(u8).init(testing.allocator);
+        // Withdrawn (1 route: 10.0.0.0/24 -> 4 bytes)
+        try list.appendSlice(&[_]u8{ 0, 4, 24, 10, 0, 0 });
         
-        // LocalPref
-        0x40, // Flags
-        5,    // Type
-        4,    // Length
-        0, 0, 0, 200, // Value
+        // Attrs
+        // We'll calculate total length later. Let's start with a placeholder.
+        const attrLenPlaceholderIdx = list.items.len;
+        try list.appendSlice(&[_]u8{ 0, 0 });
 
-        // Unknown Attribute (Mocked)
-        0x00, // Flags (Non-transitive, Optional as per BGP rules it should be ignored if unknown)
-        99,   // Type (Unknown)
-        5,    // Length
-        1, 2, 3, 4, 5, // Data (to be ignored)
+        const attrStartIdx = list.items.len;
 
-        // ASPath (Well-known mandatory)
-        0x40, // Flags (Transitive)
-        2,    // Type
-        6,    // Length
-        2,    // AS_Sequence
-        2,    // Length
-        0, 100,
-        0, 200,
+        // -- Origin (Flags:0x40, Type:1, Len:1, Val:0)
+        try list.appendSlice(&[_]u8{ 0x40, 1, 1, 0 });
+        // -- AsPath (Flags:0x40, Type:2, Len:6, Val: [Seq, 2 ASNs, 100, 200])
+        try list.appendSlice(&[_]u8{ 0x40, 2, 6, 2, 2, 0, 100, 0, 200 });
+        // -- NextHop (Flags:0x40, Type:3, Len:4, Val: 1.2.3.4)
+        try list.appendSlice(&[_]u8{ 0x40, 3, 4, 1, 2, 3, 4 });
+        // -- MED (Flags:0x80, Type:4, Len:4, Val: 1234)
+        try list.appendSlice(&[_]u8{ 0x80, 4, 4, 0, 0, 4, 210 });
+        // -- LocalPref (Flags:0x40, Type:5, Len:4, Val: 100)
+        try list.appendSlice(&[_]u8{ 0x40, 5, 4, 0, 0, 0, 100 });
+        // -- AtomicAggregate (Flags:0x40, Type:6, Len:0)
+        try list.appendSlice(&[_]u8{ 0x40, 6, 0 });
+        // -- Aggregator (Flags:0xC0, Type:7, Len:6, Val: AS 65001, 1.2.3.4)
+        try list.appendSlice(&[_]u8{ 0xC0, 7, 6, 0xFD, 0xE9, 1, 2, 3, 4 });
+        // -- Unknown Short (Flags:0x80, Type:100, Len:3)
+        try list.appendSlice(&[_]u8{ 0x80, 100, 3 });
+        try list.appendSlice(&unknownDataShort);
+        // -- Unknown Long (Flags:0x90, Type:101, Len:300)
+        try list.appendSlice(&[_]u8{ 0x90, 101, 1, 44 });
+        try list.appendSlice(&unknownDataLong);
 
-        // NextHop (Well-known mandatory)
-        0x40, // Flags (Transitive)
-        3,    // Type
-        4,    // Length
-        192, 168, 0, 1,
+        const attrEndIdx = list.items.len;
+        const totalAttrLen: u16 = @intCast(attrEndIdx - attrStartIdx);
+        std.mem.writeInt(u16, list.items[attrLenPlaceholderIdx..][0..2], totalAttrLen, .big);
+
+        // Advertised (1 route: 192.168.1.0/24 -> 4 bytes)
+        try list.appendSlice(&[_]u8{ 24, 192, 168, 1 });
+
+        break :blk list;
     };
+    defer messageBuffer.deinit();
 
-    var stream = std.io.fixedBufferStream(&attributesBuffer);
+    var stream = std.io.fixedBufferStream(messageBuffer.items);
     var readBuffer: [1024]u8 = undefined;
     var reader = stream.reader().adaptToNewApi(&readBuffer);
     var updateReader = UpdateMsgParser{
@@ -504,31 +493,39 @@ test "readAttributes compound test" {
         .reader = &reader.new_interface,
     };
 
-    const attrs = try updateReader.readAttributes(@intCast(attributesBuffer.len));
-    defer attrs.deinit();
+    var message = try updateReader.readUpdateMessage(@intCast(messageBuffer.items.len));
+    defer message.deinit();
 
-    // Verify attributes were parsed correctly despite the unknown attribute
-    try testing.expectEqual(model.Origin.IGP, attrs.origin.value);
-    try testing.expectEqual(@as(u32, 200), attrs.localPref.value);
-    try testing.expectEqual(@as(usize, 1), attrs.asPath.value.segments.len);
-    try testing.expectEqual(model.ASPathSegmentType.AS_Sequence, attrs.asPath.value.segments[0].segType);
-    try testing.expectEqualSlices(u16, &[_]u16{ 100, 200 }, attrs.asPath.value.segments[0].contents);
-    try testing.expect(attrs.nexthop.value.equals(ip.IpV4Address.parse("192.168.0.1") catch unreachable));
+    // Verify Routes
+    try testing.expectEqual(@as(usize, 1), message.withdrawnRoutes.len);
+    try testing.expectEqual(@as(u8, 24), message.withdrawnRoutes[0].prefixLength);
+    try testing.expectEqualSlices(u8, &[_]u8{ 10, 0, 0, 0 }, &message.withdrawnRoutes[0].prefixData);
+
+    try testing.expectEqual(@as(usize, 1), message.advertisedRoutes.len);
+    try testing.expectEqual(@as(u8, 24), message.advertisedRoutes[0].prefixLength);
+    try testing.expectEqualSlices(u8, &[_]u8{ 192, 168, 1, 0 }, &message.advertisedRoutes[0].prefixData);
+
+    // Verify Attributes
+    const attrs = message.pathAttributes.list.items;
+    try testing.expectEqual(@as(usize, 9), attrs.len);
+
+    try testing.expectEqual(ribModel.Origin.IGP, attrs[0].Origin.value);
     
-    // Ensure we read the entire buffer
-    try testing.expectEqual(attributesBuffer.len, stream.getPos());
-}
+    try testing.expectEqual(@as(usize, 1), attrs[1].AsPath.value.segments.len);
+    try testing.expectEqual(ribModel.ASPathSegmentType.AS_Sequence, attrs[1].AsPath.value.segments[0].segType);
+    try testing.expectEqualSlices(u16, &[_]u16{ 100, 200 }, attrs[1].AsPath.value.segments[0].contents);
 
-test "readLocalPref()" {
-    const buffer = [_]u8{ 0, 0, 0, 100 };
-    var stream = std.io.fixedBufferStream(&buffer);
-    var readBuffer: [1024]u8 = undefined;
-    var reader = stream.reader().adaptToNewApi(&readBuffer);
-    var updateReader = Self{
-        .allocator = testing.allocator,
-        .reader = &reader.new_interface,
-    };
+    try testing.expect(attrs[2].Nexthop.value.equals(ip.IpV4Address.parse("1.2.3.4") catch unreachable));
+    try testing.expectEqual(@as(u32, 1234), attrs[3].MultiExitDiscriminator.value);
+    try testing.expectEqual(@as(u32, 100), attrs[4].LocalPref.value);
+    try testing.expect(attrs[5].AtomicAggregate.value);
+    try testing.expectEqual(@as(u16, 65001), attrs[6].Aggregator.value.as);
+    try testing.expect(attrs[6].Aggregator.value.address.equals(ip.IpV4Address.init(1, 2, 3, 4)));
 
-    const actualLocalPref = try updateReader.readLocalPref();
-    try testing.expectEqual(@as(u32, 100), actualLocalPref);
+    try testing.expectEqual(@as(u8, 100), attrs[7].Unknown.value.typeCode);
+    try testing.expectEqualSlices(u8, &unknownDataShort, attrs[7].Unknown.value.value);
+
+    try testing.expectEqual(@as(u8, 101), attrs[8].Unknown.value.typeCode);
+    try testing.expectEqualSlices(u8, &unknownDataLong, attrs[8].Unknown.value.value);
+    try testing.expect((attrs[8].Unknown.flags & ribModel.ATTR_EXTENDED_LENGTH_FLAG) != 0);
 }
