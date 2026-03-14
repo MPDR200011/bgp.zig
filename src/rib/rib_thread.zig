@@ -310,6 +310,7 @@ pub const SyncTask = struct {
             var aggIter = aggregatedRoutes.groups.iterator();
             while (aggIter.next()) |group| {
                 var attrs = try group.key_ptr.clone(ctx.allocator);
+                defer attrs.deinit();
 
                 if (peerType == .External) {
                     attrs.nexthop.value = sessionsAddresses.localAddress;
@@ -318,12 +319,12 @@ pub const SyncTask = struct {
 
                 for (group.value_ptr.items) |route| {
                     std.log.info("Sending update", .{});
-                    const msg: messageModel.BgpMessage = .{ .UPDATE = .{ 
-                        .allocator = ctx.allocator, 
-                        .withdrawnRoutes = &[_]model.Route{}, 
-                        .advertisedRoutes = &[_]model.Route{route},
-                        .pathAttributes = try utils.convertUnifiedStructToAttributeList(ctx.allocator, peerType, attrs),
-                    } };
+                    var msg: messageModel.BgpMessage = .{ .UPDATE = try .init(
+                        ctx.allocator, 
+                        &[_]model.Route{}, 
+                        &[_]model.Route{route},
+                        try utils.convertUnifiedStructToAttributeList(ctx.allocator, peerType, attrs),
+                    ) };
                     defer msg.deinit();
                     try peer.session.sendMessage(msg);
                 }

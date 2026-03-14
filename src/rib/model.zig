@@ -23,7 +23,7 @@ pub const ASPathSegment = struct {
     allocator: Allocator,
 
     segType: ASPathSegmentType,
-    contents: []const u16,
+    contents: []u16,
 
     pub fn deinit(self: Self) void {
         self.allocator.free(self.contents);

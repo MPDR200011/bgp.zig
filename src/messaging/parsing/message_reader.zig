@@ -20,18 +20,6 @@ pub const MessageReader = struct {
 
     pub fn deinit(_: *Self) void {}
 
-    pub fn deInitMessage(_: *Self, m: model.BgpMessage) void {
-        switch (m) {
-            .NOTIFICATION => |msg| {
-                msg.deinit();
-            },
-            .UPDATE => |msg| {
-                msg.deinit();
-            },
-            else => {}
-        }
-    }
-
     pub fn readMessage(self: *Self, stream: *std.Io.Reader) !model.BgpMessage {
         const messageHeader = try headerReader.readHeader(stream);
 

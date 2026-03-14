@@ -185,13 +185,11 @@ pub const UpdateMessage = struct {
         std.debug.assert(pathAttributes.list.items.len > 0 or advertisedRoutes.len == 0);
         std.debug.assert(pathAttributes.list.items.len == 0 or advertisedRoutes.len > 0);
 
-        const wR = try allocator.alloc(Route, withdrawnRoutes.len);
+        const wR = try allocator.dupe(Route, withdrawnRoutes);
         errdefer allocator.free(wR);
-        std.mem.copyForwards(Route, wR, withdrawnRoutes);
 
-        const aR = try allocator.alloc(Route, advertisedRoutes.len);
+        const aR = try allocator.dupe(Route, advertisedRoutes);
         errdefer allocator.free(aR);
-        std.mem.copyForwards(Route, aR, advertisedRoutes);
 
         return Self{
             .allocator = allocator,
@@ -201,11 +199,10 @@ pub const UpdateMessage = struct {
         };
     }
 
-    pub fn deinit(self: *const Self) void {
+    pub fn deinit(self: *Self) void {
         self.allocator.free(self.withdrawnRoutes);
         self.allocator.free(self.advertisedRoutes);
-        var attrs = self.pathAttributes;
-        attrs.deinit();
+        self.pathAttributes.deinit();
     }
 };
 
@@ -228,10 +225,10 @@ pub const BgpMessage = union(BgpMessageType) {
     NOTIFICATION: NotificationMessage,
     KEEPALIVE: KeepAliveMessage,
 
-    pub fn deinit(self: Self) void {
-        switch (self) {
-            .UPDATE => |msg| msg.deinit(),
-            .NOTIFICATION => |msg| msg.deinit(),
+    pub fn deinit(self: *Self) void {
+        switch (self.*) {
+            .UPDATE => |*msg| msg.deinit(),
+            .NOTIFICATION => |*msg| msg.deinit(),
             else => {},
         }
     }

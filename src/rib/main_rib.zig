@@ -97,8 +97,8 @@ const RibEntry = struct {
         }
 
         const path = self.paths.getPtr(advertiser) orelse return;
-
         path.deinit();
+
         _ = self.paths.remove(advertiser);
     }
 };

@@ -78,6 +78,11 @@ fn readOrigin(self: *Self) !ribModel.Origin {
 fn readAsPath(self: *Self, bytesLength: u16) !ribModel.ASPath {
     var pathSegments: std.ArrayList(ribModel.ASPathSegment) = .empty;
     defer pathSegments.deinit(self.allocator);
+    errdefer {
+        for (pathSegments.items) |*seg| {
+            seg.deinit();
+        }
+    }
 
     var currentRead: usize = 0;
     while (currentRead < bytesLength) {
@@ -89,12 +94,11 @@ fn readAsPath(self: *Self, bytesLength: u16) !ribModel.ASPath {
         for (0..segmentLength) |i| {
             segmentContents[i] = try self.reader.takeInt(u16, .big);
         }
-        const segment = try pathSegments.addOne(self.allocator);
-        segment.* = .{
+        try pathSegments.append(self.allocator, .{
             .allocator = self.allocator,
             .segType = segmentType,
             .contents = segmentContents,
-        };
+        });
 
         currentRead += (2 + (segmentLength * 2));
     }
@@ -133,6 +137,12 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
         .alloc = self.allocator,
         .list = .empty
     };
+    errdefer {
+        for (attributes.list.items) |*attr| {
+            attr.deinit();
+        }
+        attributes.list.deinit(attributes.alloc);
+    }
 
     var bytesToRead: i32 = @intCast(attributesLength);
     while (bytesToRead > 0) {
@@ -142,26 +152,24 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
         const extendedLength: bool = (attributeFlags & ribModel.ATTR_EXTENDED_LENGTH_FLAG) > 0;
         const attributeLength: u16 = if (extendedLength) try self.reader.takeInt(u16, .big) else @intCast(try self.reader.takeInt(u8, .big));
 
-        const attribute = try attributes.list.addOne(attributes.alloc);
-
         // TODO: Unrecognized non-transitive optional attributes MUST be
         // quietly ignored and not passed along to other BGP peers.
-        switch (attributeType) {
+        const attribute: PathAttribute = attr: switch (attributeType) {
             1 => {
-                attribute.* = .{ .Origin = .{
+                break :attr .{ .Origin = .{
                     .flags = attributeFlags,
                     .value = try self.readOrigin(),
                 } };
             },
             2 => {
-                attribute.* = .{ .AsPath = .{
+                break :attr .{ .AsPath = .{
                     .flags = attributeFlags,
                     .value = try self.readAsPath(attributeLength),
                 } };
             },
             3 => {
                 std.debug.assert(attributeLength == 4);
-                attribute.* = .{ .Nexthop = .{
+                break :attr .{ .Nexthop = .{
                     .flags = attributeFlags,
                     .value = try self.readNextHop(),
                 } };
@@ -169,14 +177,14 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
             5 => {
                 // FIXME make sure localPref flags are properly set
                 std.debug.assert(attributeLength == 4);
-                attribute.* = .{ .LocalPref = .{
+                break :attr .{ .LocalPref = .{
                     .flags = attributeFlags,
                     .value = try self.readLocalPref(),
                 } };
             },
             else => {
                 // Ignore unknown attribute
-                attribute.* = .{ .Unknown = .{
+                break :attr .{ .Unknown = .{
                     .flags = attributeFlags,
                     .value = .{
                         .allocator = self.allocator,
@@ -185,7 +193,9 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
                     },
                 } };
             },
-        }
+        };
+
+        try attributes.list.append(self.allocator, attribute);
 
         bytesToRead -= 2; // For attributeFlags and attributeType
         bytesToRead -= if (extendedLength) 2 else 1; // For attributeLength field itself

@@ -133,6 +133,7 @@ pub fn main() !void {
     const localPort = processConfig.localConfig.localPort orelse 179;
 
     var mainRib = try ribManager.RibManager.init(gpa);
+    defer mainRib.deinit();
 
     std.log.info("Initializing peer map", .{});
 

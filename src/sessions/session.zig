@@ -424,29 +424,29 @@ pub const Session = struct {
 
         switch (nextAction) {
             .Transition => |nextState| self.switchState(nextState),
-            .Keep => return,
+            .Keep => {},
         }
 
-
-        switch (event) {
-            .OpenReceived => |msg| {
-                self.messageReader.deInitMessage(.{ .OPEN = msg });
+        switch (@constCast(&event).*) {
+            .OpenReceived => { },
+            .UpdateReceived => |*msg| {
+                msg.deinit();
             },
-            .UpdateReceived => |msg| {
-                self.messageReader.deInitMessage(.{ .UPDATE = msg });
+            .NotificationReceived => |*msg| {
+                msg.deinit();
             },
-            .NotificationReceived => |msg| {
-                self.messageReader.deInitMessage(.{ .NOTIFICATION = msg });
-            },
-            .OpenCollisionDump => |ctx| {
-                self.messageReader.deInitMessage(.{ .OPEN = ctx.openMsg });
-            },
+            .OpenCollisionDump => { },
             else => {},
         }
     }
 
     pub fn processUpdateMsg(self: *Self, msg: messageModel.UpdateMessage) !void {
         const pathAttributes: ?ribModel.PathAttributes = try ribUtils.convertAttributeListToUnifiedStruct(self.allocator, self.info.?.peerType, msg.pathAttributes);
+        defer {
+            if (pathAttributes) |attrs| {
+                attrs.deinit();
+            }
+        }
 
         for (msg.withdrawnRoutes) |route| {
             self.adjRibInManager.?.removePath(route);
