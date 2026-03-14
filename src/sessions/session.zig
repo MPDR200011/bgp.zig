@@ -65,7 +65,7 @@ pub const Event = union(enum) {
     NotificationReceived: messageModel.NotificationMessage,
 
     pub fn deinit(self: *@This()) void {
-        switch (@constCast(self).*) {
+        switch (self.*) {
             .OpenReceived => { },
             .UpdateReceived => |*msg| {
                 msg.deinit();
