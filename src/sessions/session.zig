@@ -66,14 +66,12 @@ pub const Event = union(enum) {
 
     pub fn deinit(self: *@This()) void {
         switch (self.*) {
-            .OpenReceived => { },
             .UpdateReceived => |*msg| {
                 msg.deinit();
             },
             .NotificationReceived => |*msg| {
                 msg.deinit();
             },
-            .OpenCollisionDump => { },
             else => {},
         }
     }
