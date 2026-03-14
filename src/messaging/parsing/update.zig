@@ -128,7 +128,7 @@ fn readAggregator(self: *Self) !ribModel.Aggregator {
         .as = try self.reader.takeInt(u16, .big),
         .address = undefined
     };
-    try self.reader.readSliceAll(agg.address.address);
+    try self.reader.readSliceAll(&agg.address.address);
     return agg;
 }
 

@@ -113,7 +113,7 @@ fn writeAttributes(attrs: *const AttributeList, writer: *std.Io.Writer) !void {
                 try writer.writeInt(u8, med.flags, .big);
                 try writer.writeInt(u8, 4, .big);
                 try writer.writeInt(u8, 4, .big);
-                try writer.writeInt(u32, med.value.value, .big);
+                try writer.writeInt(u32, med.value, .big);
             },
             .LocalPref => |*localPref| {
                 try writer.writeInt(u8, localPref.flags, .big);
