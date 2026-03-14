@@ -120,7 +120,7 @@ const PathAttribute = union(enum) {
 
 
     pub fn deinit(self: *@This()) void {
-        switch (self) {
+        switch (self.*) {
             .AsPath => |*asPath| {
                 asPath.value.deinit();
             },
@@ -149,11 +149,6 @@ const PathAttribute = union(enum) {
             .Aggregator => { return self.*; }
         }
     }
-};
-
-
-pub const MessageContext = struct {
-    peerType: ?sessions.Session.PeerType
 };
 
 pub const AttributeList = struct {

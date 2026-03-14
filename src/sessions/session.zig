@@ -288,9 +288,7 @@ pub const Session = struct {
         var connectionWriter = connection.writer(&writeBuffer);
 
         
-        try self.messageEncoder.writeMessage(.{
-            .peerType = if (self.info != null) self.info.?.peerType else null
-        }, msg, &connectionWriter.interface);
+        try self.messageEncoder.writeMessage(msg, &connectionWriter.interface);
 
         std.log.debug("Sent message", .{});
 

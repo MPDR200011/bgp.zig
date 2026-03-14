@@ -231,7 +231,7 @@ pub fn readUpdateMessage(self: *Self, messageLength: u16) !messageModel.UpdateMe
         };
         return .init(self.allocator, withdrawnRoutes.items, self.allocator.alloc(Route, 0) catch unreachable, attrs);
     } else {
-        const routeAttributes = try self.readAttributes(attributesLength);
+        var routeAttributes = try self.readAttributes(attributesLength);
         errdefer routeAttributes.deinit();
 
         const advertisedRoutes = try self.readRoutes(advertisedLength);

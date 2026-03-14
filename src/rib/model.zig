@@ -311,7 +311,7 @@ pub const PathAttributes = struct {
     multiExitDiscriminator: ?MultiExitDiscriminatorAttr,
 
     // Optional, transitive
-    aggregator: ?Aggregator,
+    aggregator: ?AggregatorAttr,
 
     // TODO: track partial bit in recognised attrs
     // If a path with a recognized, transitive optional attribute is accepted

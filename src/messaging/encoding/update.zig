@@ -9,7 +9,7 @@ const AttributeList = messageModel.AttributeList;
 
 const AsPath = ribModel.ASPath;
 
-fn calculateRoutesLength(routes: []const messageModel.Route) usize {
+fn calculateRoutesLength(routes: []const ribModel.Route) usize {
     var total: usize = 0;
     for (routes) |route| {
         total += 1;
@@ -21,7 +21,7 @@ fn calculateRoutesLength(routes: []const messageModel.Route) usize {
     return total;
 }
 
-fn writeRoutes(routes: []const messageModel.Route, writer: *std.Io.Writer) !void {
+fn writeRoutes(routes: []const ribModel.Route, writer: *std.Io.Writer) !void {
     for (routes) |route| {
         try writer.writeInt(u8, route.prefixLength, .big);
 
@@ -84,7 +84,7 @@ fn writeAttributes(attrs: *const AttributeList, writer: *std.Io.Writer) !void {
                 const asPathDataLen = calculateASPathByteLength(&asPath.value);
                 const isExtendedLen = asPathDataLen > 255;
                 if (isExtendedLen) {
-                    try writer.writeInt(u8, asPath.flags | messageModel.ATTR_EXTENDED_LENGTH_FLAG, .big);
+                    try writer.writeInt(u8, asPath.flags | ribModel.ATTR_EXTENDED_LENGTH_FLAG, .big);
                 } else {
                     try writer.writeInt(u8, asPath.flags, .big);
                 }
