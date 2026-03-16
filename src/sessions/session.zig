@@ -444,37 +444,37 @@ pub const Session = struct {
     }
 
     pub fn processUpdateMsg(self: *Self, msg: messageModel.UpdateMessage) !void {
-        const pathAttributes: ?ribModel.PathAttributes = try ribUtils.convertAttributeListToUnifiedStruct(self.allocator, self.info.?.peerType, msg.pathAttributes);
-        defer {
-            if (pathAttributes) |attrs| {
-                attrs.deinit();
-            }
-        }
-
         for (msg.withdrawnRoutes) |route| {
             self.adjRibInManager.?.removePath(route);
         }
 
-        if (pathAttributes) |attrs| {
-            var acceptRoutes: bool = true;
+        if (msg.advertisedRoutes.len == 0) {
+            return;
+        }
 
-            // Detect AS Path Loops
-            if (self.info.?.peerType == .External) {
-                loopDetection: for (attrs.asPath.value.segments) |seg| {
-                    for (seg.contents) |as| {
-                        if (as == self.parent.localAsn) {
-                            acceptRoutes = false;
-                            std.log.debug("Rejecting advertised routes due to AS path loop", .{});
-                            break :loopDetection;
-                        }
+        const pathAttributes: ribModel.PathAttributes = try ribUtils.convertAttributeListToUnifiedStruct(self.allocator, self.info.?.peerType, msg.pathAttributes);
+        defer {
+            pathAttributes.deinit();
+        }
+
+        var acceptRoutes: bool = true;
+
+        // Detect AS Path Loops
+        if (self.info.?.peerType == .External) {
+            loopDetection: for (pathAttributes.asPath.value.segments) |seg| {
+                for (seg.contents) |as| {
+                    if (as == self.parent.localAsn) {
+                        acceptRoutes = false;
+                        std.log.debug("Rejecting advertised routes due to AS path loop", .{});
+                        break :loopDetection;
                     }
                 }
             }
+        }
 
-            if (acceptRoutes) {
-                for (msg.advertisedRoutes) |route| {
-                    try self.adjRibInManager.?.setPath(route, attrs);
-                }
+        if (acceptRoutes) {
+            for (msg.advertisedRoutes) |route| {
+                try self.adjRibInManager.?.setPath(route, pathAttributes);
             }
         }
     }
