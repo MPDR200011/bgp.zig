@@ -5,10 +5,7 @@ const session = @import("../sessions/session.zig");
 
 const Allocator = std.mem.Allocator;
 
-pub fn convertAttributeListToUnifiedStruct(allocator: Allocator, peerType: session.Session.PeerType, attrList: messageModel.AttributeList) !?ribModel.PathAttributes {
-    if (attrList.list.items.len == 0) {
-        return null;
-    }
+pub fn convertAttributeListToUnifiedStruct(allocator: Allocator, peerType: session.Session.PeerType, attrList: messageModel.AttributeList) !ribModel.PathAttributes {
     var attributes: ribModel.PathAttributes = .empty;
     attributes.allocator = allocator;
 
@@ -136,9 +133,7 @@ test "symmetry between attribute conversions obj -> list -> obj" {
         var attrList = try convertUnifiedStructToAttributeList(testing.allocator, .Internal, attrs1);
         defer attrList.deinit();
 
-        const attrs2_opt = try convertAttributeListToUnifiedStruct(testing.allocator, .Internal, attrList);
-        try testing.expect(attrs2_opt != null);
-        var attrs2 = attrs2_opt.?;
+        const attrs2 = try convertAttributeListToUnifiedStruct(testing.allocator, .Internal, attrList);
         defer attrs2.deinit();
 
         try testing.expect(attrs1.equal(&attrs2));
@@ -149,9 +144,7 @@ test "symmetry between attribute conversions obj -> list -> obj" {
         var attrList = try convertUnifiedStructToAttributeList(testing.allocator, .External, attrs1);
         defer attrList.deinit();
 
-        const attrs3_opt = try convertAttributeListToUnifiedStruct(testing.allocator, .External, attrList);
-        try testing.expect(attrs3_opt != null);
-        var attrs3 = attrs3_opt.?;
+        const attrs3 = try convertAttributeListToUnifiedStruct(testing.allocator, .External, attrList);
         defer attrs3.deinit();
 
         // LocalPref is forced to 100 on reading External attributes
