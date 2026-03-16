@@ -314,18 +314,18 @@ pub const PathAttributes = struct {
 
     // Well known
     // Mandatory for internal peers or confeds
-    localPref: LocalPrefAttr,
+    localPref: LocalPrefAttr = .init(100),
 
     // Well known, discretionary
-    atomicAggregate: ?AtomicAggregateAttr,
+    atomicAggregate: ?AtomicAggregateAttr = null,
 
     // Optional, non-transitive
-    multiExitDiscriminator: ?MultiExitDiscriminatorAttr,
+    multiExitDiscriminator: ?MultiExitDiscriminatorAttr = null,
 
     // Optional, transitive
-    aggregator: ?AggregatorAttr,
+    aggregator: ?AggregatorAttr = null,
 
-    unknownAttributes: []UnknownAttr,
+    unknownAttributes: []UnknownAttr = &[_]UnknownAttr{},
 
     // TODO: track partial bit in recognised attrs
     // If a path with a recognized, transitive optional attribute is accepted
