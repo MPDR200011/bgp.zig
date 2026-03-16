@@ -1,6 +1,6 @@
 ## TODOs
 
-- Route origination
+- Periodic task that restarts peer sessions
 - Transmit unrecognized optional transitive attributes
 - Rename Path -> Route
 - MinRouteAdvertisementIntervalTimer
