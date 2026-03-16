@@ -403,8 +403,10 @@ pub const PathAttributes = struct {
             return false;
         }
 
+        // This assume the unknown attributes are sorted by type code
         if (self.unknownAttributes.len != other.unknownAttributes.len) return false;
         for (self.unknownAttributes, 0..) |uk, i| {
+            // TODO: do we care about flags being equal?
             if (uk.flags != other.unknownAttributes[i].flags) return false;
             if (!uk.value.equal(&other.unknownAttributes[i].value)) return false;
         }
