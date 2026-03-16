@@ -61,6 +61,13 @@ pub const ASPath = struct {
     allocator: Allocator,
     segments: []const ASPathSegment,
 
+    pub fn initEmpty(alloc: Allocator) !Self {
+        return .{
+            .allocator = alloc,
+            .segments = try alloc.alloc(ASPathSegment, 0),
+        };
+    }
+
     pub fn deinit(self: Self) void {
         for (self.segments) |seg| {
             seg.deinit();
@@ -194,6 +201,23 @@ pub const ASPath = struct {
     }
 };
 
+pub const Nexthop = union(enum) {
+    Self: void,
+    Address: ip.IpV4Address,
+
+    pub fn equals(self: @This(), other: @This()) bool {
+        if (std.meta.activeTag(self) != std.meta.activeTag(other)) {
+            return false;
+        }
+        switch (self) {
+            .Self => return true,
+            .Address => |addr| {
+                return addr.equals(other.Address);
+            }
+        }
+    }
+};
+
 pub const Aggregator = struct {
     const Self = @This();
 
@@ -295,7 +319,7 @@ fn areOptionalAttrsEqual(comptime Type: type, attr1: ?Attribute(Type), attr2: ?A
 
 pub const OriginAttr = Attribute(Origin);
 pub const AsPathAttr = Attribute(ASPath);
-pub const NexthopAttr = Attribute(ip.IpV4Address);
+pub const NexthopAttr = Attribute(Nexthop);
 pub const LocalPrefAttr = Attribute(u32);
 pub const AtomicAggregateAttr = Attribute(bool);
 pub const MultiExitDiscriminatorAttr = Attribute(u32);

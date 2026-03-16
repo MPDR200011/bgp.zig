@@ -7,10 +7,12 @@ const clap = @import("clap");
 const ip = @import("ip");
 const zul = @import("zul");
 const xev = @import("xev");
+const rib = @import("rib/model.zig");
 
 const Allocator = std.mem.Allocator;
 
-const config = @import("config/json.zig");
+const configJson = @import("config/json.zig");
+const configParsing = @import("config/parsing.zig");
 
 const session = @import("sessions/session.zig");
 const connections = @import("sessions/connections.zig");
@@ -126,7 +128,7 @@ pub fn main() !void {
         std.process.abort();
     };
 
-    const managedProcessConfig = try config.loadConfig(gpa, configPath);
+    const managedProcessConfig = try configJson.loadConfig(gpa, configPath);
     defer managedProcessConfig.deinit();
 
     const processConfig = managedProcessConfig.value;
@@ -134,6 +136,25 @@ pub fn main() !void {
 
     var mainRib = try ribManager.RibManager.init(gpa);
     defer mainRib.deinit();
+
+    // Originate Routes
+    {
+        for (processConfig.networks) |network| {
+            const route = try configParsing.parseNetworkToRoute(network);
+            // TODO: idea, origination policy
+            try mainRib.setPath(route, .self, .{
+                .allocator = gpa,
+                .origin = .init(.IGP),
+                .asPath = .init(try .initEmpty(gpa)),
+                .nexthop = .init(.Self),
+                .multiExitDiscriminator = null,
+                .localPref = .init(100), // Default Value
+                .atomicAggregate = null,
+                .aggregator = null,
+            });
+        }
+    }
+
 
     std.log.info("Initializing peer map", .{});
 

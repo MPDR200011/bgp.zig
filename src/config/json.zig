@@ -27,8 +27,8 @@ pub const NetworkDefinition = struct {
 
 pub const Config = struct {
     localConfig: LocalConfig,
-    peers: []const PeerDefinition,
-    networks: []const NetworkDefinition,
+    peers: [] PeerDefinition,
+    networks: [] NetworkDefinition,
 };
 
 pub fn loadConfig(allocator: Allocator, configPath: []const u8) !zul.Managed(Config) {

@@ -107,7 +107,7 @@ fn writeAttributes(attrs: *const AttributeList, writer: *std.Io.Writer) !void {
                 try writer.writeInt(u8, nexthop.flags, .big);
                 try writer.writeInt(u8, 3, .big);
                 try writer.writeInt(u8, 4, .big);
-                try writer.writeAll(&nexthop.value.address);
+                try writer.writeAll(&nexthop.value.Address.address);
             },
             .MultiExitDiscriminator=> |med| {
                 try writer.writeInt(u8, med.flags, .big);

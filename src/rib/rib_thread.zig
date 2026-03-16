@@ -322,8 +322,10 @@ pub const SyncTask = struct {
                 var attrs = try group.key_ptr.clone(ctx.allocator);
                 defer attrs.deinit();
 
+                if (peerType == .External or attrs.nexthop.value == .Self) {
+                    attrs.nexthop.value = .{ .Address = sessionsAddresses.localAddress };
+                }
                 if (peerType == .External) {
-                    attrs.nexthop.value = sessionsAddresses.localAddress;
                     try attrs.asPath.value.prependASN(peer.localAsn);
                 }
 

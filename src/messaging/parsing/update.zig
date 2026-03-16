@@ -177,7 +177,7 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
                 std.debug.assert(attributeLength == 4);
                 break :attr .{ .Nexthop = .{
                     .flags = attributeFlags,
-                    .value = try self.readNextHop(),
+                    .value = .{ .Address = try self.readNextHop() },
                 } };
             },
             4 => {
