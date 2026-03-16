@@ -151,8 +151,7 @@ pub const PathAttribute = union(enum) {
             .Aggregator => { return self.*; },
             .Unknown => |unknown| {
                 var tmp: UnknownAttr = unknown;
-                tmp.value.value = try allocator.dupe(u8, unknown.value.value);
-                tmp.value.allocator = allocator;
+                tmp.value.value = try unknown.value.clone(allocator);
                 return .{ .Unknown = tmp };
             },
         }

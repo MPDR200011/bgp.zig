@@ -218,6 +218,14 @@ pub const Unknown = struct {
     pub fn deinit(self: *@This()) void {
         self.allocator.free(self.value);
     }
+
+    pub fn clone(self: @This(), allocator: Allocator) !@This() {
+        return .{
+            .allocator = allocator,
+            .typeCode = self.typeCode,
+            .value = try allocator.dupe(u8, self.value),
+        };
+    }
 };
 
 pub const ATTR_OPTIONAL_FLAG: u8 = 0x80;
@@ -313,6 +321,8 @@ pub const PathAttributes = struct {
     // Optional, transitive
     aggregator: ?AggregatorAttr,
 
+    unknownAttributes: []UnknownAttr,
+
     // TODO: track partial bit in recognised attrs
     // If a path with a recognized, transitive optional attribute is accepted
     // and passed along to other BGP peers and the Partial bit in the Attribute
@@ -338,6 +348,7 @@ pub const PathAttributes = struct {
 
     pub fn deinit(self: Self) void {
         self.asPath.value.deinit();
+        self.allocator.free(self.unknownAttributes);
     }
 
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {

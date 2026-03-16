@@ -18,6 +18,11 @@ pub fn convertAttributeListToUnifiedStruct(allocator: Allocator, peerType: sessi
     var asPathRead: bool = false;
     var nextHopRead: bool = false;
 
+    var unknownAttributes: std.ArrayList(ribModel.UnknownAttr) = .empty;
+    defer unknownAttributes.deinit(attributes.allocator);
+
+    // TODO: validate attribute flags
+
     for (attrList.list.items) |attr| {
         switch (attr) {
             .Origin => |origin| {
@@ -48,10 +53,19 @@ pub fn convertAttributeListToUnifiedStruct(allocator: Allocator, peerType: sessi
                 attributes.aggregator = agg;
             },
             .Unknown => |uk| {
-                std.log.info("Unknown parameter (type={})", .{uk.value.typeCode});
+                if (uk.isOptional() and uk.isTransitive()) {
+                    unknownAttributes.append(allocator, .{
+                        .flags = uk.flags | ribModel.ATTR_PARTIAL_FLAG,
+                        .value = try uk.value.clone(attributes.allocator),
+                    });
+                } else {
+                    std.log.info("Dropping unknown non-optional attribute (type={})", .{uk.value.typeCode});
+                }
             }
         }
     }
+
+    attributes.unknownAttributes = unknownAttributes.toOwnedSlice(attributes.allocator);
     
     if (!originRead) {
         return error.MissingOriginAttribute;
@@ -73,24 +87,45 @@ pub fn convertUnifiedStructToAttributeList(allocator: Allocator, peerType: sessi
     };
     errdefer attributes.deinit();
 
-    try attributes.list.append(allocator, .{ .Origin = attrs.origin });
+    try attributes.list.append(allocator, .{ .Origin = .{
+        .flags = ribModel.ATTR_TRANSITIVE_FLAG,
+        .value = attrs.origin.value
+    } });
     {
-        var asPath = attrs.asPath;
-        asPath.value = try attrs.asPath.value.clone(allocator);
-        try attributes.list.append(allocator, .{ .AsPath = asPath });
+        try attributes.list.append(allocator, .{ .AsPath = .{ 
+            .flags = ribModel.ATTR_TRANSITIVE_FLAG,
+            .value = attrs.asPath.value.clone(allocator),
+        } });
     }
-    try attributes.list.append(allocator, .{ .Nexthop = attrs.nexthop });
-    if (attrs.multiExitDiscriminator) |med| {
-        try attributes.list.append(allocator, .{ .MultiExitDiscriminator = med });
-    }
+    try attributes.list.append(allocator, .{ .Nexthop = .{ 
+        .flags = ribModel.ATTR_TRANSITIVE_FLAG,
+        .value = attrs.nexthop,
+    } });
+
+    // MED isn't propagated to other speakers
+    // TODO: "MULTI_EXIT_DISC attribute MAY be propagated over IBGP to other
+    // BGP speakers within the same AS"
+    // if (attrs.multiExitDiscriminator) |med| {
+    //     try attributes.list.append(allocator, .{ .MultiExitDiscriminator = med });
+    // }
+
     if (peerType == .Internal) {
-        try attributes.list.append(allocator, .{ .LocalPref = attrs.localPref });
+        try attributes.list.append(allocator, .{ .LocalPref = .{
+            .flags = ribModel.ATTR_TRANSITIVE_FLAG,
+            .value = attrs.localPref.value,
+        } });
     }
     if (attrs.atomicAggregate) |aAgg| {
-        try attributes.list.append(allocator, .{ .AtomicAggregate = aAgg });
+        try attributes.list.append(allocator, .{ .AtomicAggregate = .{
+            .flags = ribModel.ATTR_TRANSITIVE_FLAG,
+            .value = aAgg,
+        } });
     }
     if (attrs.aggregator) |agg| {
-        try attributes.list.append(allocator, .{ .Aggregator = agg });
+        try attributes.list.append(allocator, .{ .Aggregator = .{
+            .flags = (agg.flags & ribModel.ATTR_PARTIAL_FLAG) | ribModel.ATTR_OPTIONAL_FLAG | ribModel.ATTR_TRANSITIVE_FLAG,
+            .value = agg.value,
+        } });
     }
 
     return attributes;
