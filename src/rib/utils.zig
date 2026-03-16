@@ -35,7 +35,10 @@ pub fn convertAttributeListToUnifiedStruct(allocator: Allocator, peerType: sessi
                 asPathRead = true;
             },
             .Nexthop => |nexthop| {
-                attributes.nexthop = nexthop;
+                attributes.nexthop = .{
+                    .flags = nexthop.flags,
+                    .value = .{ .Address = nexthop.value },
+                };
                 nextHopRead = true;
             },
             .MultiExitDiscriminator => |med| {
@@ -104,9 +107,10 @@ pub fn convertUnifiedStructToAttributeList(allocator: Allocator, peerType: sessi
             .value = try attrs.asPath.value.clone(allocator),
         } });
     }
+    std.debug.assert(std.meta.activeTag(attrs.nexthop.value) == .Address);
     try attributes.list.append(allocator, .{ .Nexthop = .{ 
         .flags = ribModel.ATTR_TRANSITIVE_FLAG,
-        .value = attrs.nexthop.value,
+        .value = attrs.nexthop.value.Address,
     } });
 
     // MED isn't propagated to other speakers
@@ -175,7 +179,7 @@ test "symmetry between attribute conversions obj -> list -> obj" {
         .allocator = testing.allocator,
         .origin = .init(.IGP),
         .asPath = .init(as_path),
-        .nexthop = .init(try ip.IpV4Address.parse("1.1.1.1")),
+        .nexthop = .init(.{ .Address = try ip.IpV4Address.parse("1.1.1.1") }),
         .localPref = .init(200),
         .atomicAggregate = .init(false),
         .multiExitDiscriminator = .init(10),
