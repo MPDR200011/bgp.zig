@@ -226,7 +226,11 @@ pub const Unknown = struct {
             .value = try allocator.dupe(u8, self.value),
         };
     }
+    pub fn equal(self: *const @This(), other: *const @This()) bool {
+        return self.typeCode == other.typeCode and std.mem.eql(u8, self.value, other.value);
+    }
 };
+
 
 pub const ATTR_OPTIONAL_FLAG: u8 = 0x80;
 pub const ATTR_TRANSITIVE_FLAG: u8 = 0x40;
@@ -344,10 +348,15 @@ pub const PathAttributes = struct {
         .atomicAggregate = null,
         .multiExitDiscriminator = null,
         .aggregator = null,
+        .unknownAttributes = &[_]UnknownAttr{},
     };
 
     pub fn deinit(self: Self) void {
         self.asPath.value.deinit();
+        
+        for (self.unknownAttributes) |*uk| {
+            uk.value.deinit();
+        }
         self.allocator.free(self.unknownAttributes);
     }
 
@@ -361,8 +370,18 @@ pub const PathAttributes = struct {
             .atomicAggregate = self.atomicAggregate,
             .multiExitDiscriminator = self.multiExitDiscriminator,
             .aggregator = self.aggregator,
+            .unknownAttributes = undefined,
         };
         copy.asPath.value = try self.asPath.value.clone(allocator);
+        {
+            copy.unknownAttributes = try allocator.alloc(UnknownAttr, self.unknownAttributes.len);
+            for (self.unknownAttributes, 0..) |uk, i| {
+                copy.unknownAttributes[i] = .{
+                    .flags = uk.flags,
+                    .value = try uk.value.clone(allocator),
+                };
+            }
+        }
         return copy;
     }
 
@@ -382,6 +401,12 @@ pub const PathAttributes = struct {
 
         if (!areOptionalAttrsEqual(Aggregator, self.aggregator, other.aggregator)) {
             return false;
+        }
+
+        if (self.unknownAttributes.len != other.unknownAttributes.len) return false;
+        for (self.unknownAttributes, 0..) |uk, i| {
+            if (uk.flags != other.unknownAttributes[i].flags) return false;
+            if (!uk.value.equal(&other.unknownAttributes[i].value)) return false;
         }
 
         return true;
