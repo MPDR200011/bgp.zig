@@ -107,8 +107,7 @@ fn writeAttributes(attrs: *const AttributeList, writer: *std.Io.Writer) !void {
                 try writer.writeInt(u8, nexthop.flags, .big);
                 try writer.writeInt(u8, 3, .big);
                 try writer.writeInt(u8, 4, .big);
-                std.debug.assert(std.meta.activeTag(nexthop.value) == .Address);
-                try writer.writeAll(&nexthop.value.Address.address);
+                try writer.writeAll(&nexthop.value.address);
             },
             .MultiExitDiscriminator=> |med| {
                 try writer.writeInt(u8, med.flags, .big);
@@ -287,7 +286,7 @@ test "writeUpdateBody() - All Attributes" {
     var list = std.ArrayListUnmanaged(PathAttribute){};
     try list.append(testing.allocator, .{ .Origin = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = .IGP } });
     try list.append(testing.allocator, .{ .AsPath = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = asPath } });
-    try list.append(testing.allocator, .{ .Nexthop = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = .{ .Address = ip.IpV4Address.init(1, 2, 3, 4) } } });
+    try list.append(testing.allocator, .{ .Nexthop = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = ip.IpV4Address.init(1, 2, 3, 4) } });
     try list.append(testing.allocator, .{ .MultiExitDiscriminator = .{ .flags = ribModel.ATTR_OPTIONAL_FLAG, .value = 1234 } });
     try list.append(testing.allocator, .{ .LocalPref = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = 100 } });
     try list.append(testing.allocator, .{ .AtomicAggregate = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = true } });

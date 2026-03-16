@@ -177,7 +177,7 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
                 std.debug.assert(attributeLength == 4);
                 break :attr .{ .Nexthop = .{
                     .flags = attributeFlags,
-                    .value = .{ .Address = try self.readNextHop() },
+                    .value = try self.readNextHop(),
                 } };
             },
             4 => {
@@ -515,7 +515,7 @@ test "readUpdateMessage() - All Attributes" {
     try testing.expectEqual(ribModel.ASPathSegmentType.AS_Sequence, attrs[1].AsPath.value.segments[0].segType);
     try testing.expectEqualSlices(u16, &[_]u16{ 100, 200 }, attrs[1].AsPath.value.segments[0].contents);
 
-    try testing.expect(attrs[2].Nexthop.value.equals(.{ .Address = ip.IpV4Address.parse("1.2.3.4") catch unreachable }));
+    try testing.expect(attrs[2].Nexthop.value.equals(ip.IpV4Address.parse("1.2.3.4") catch unreachable));
     try testing.expectEqual(@as(u32, 1234), attrs[3].MultiExitDiscriminator.value);
     try testing.expectEqual(@as(u32, 100), attrs[4].LocalPref.value);
     try testing.expect(attrs[5].AtomicAggregate.value);

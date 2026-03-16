@@ -101,7 +101,7 @@ pub const NotificationMessage = struct {
 pub const PathAttribute = union(enum) {
     Origin: OriginAttr,
     AsPath: AsPathAttr,
-    Nexthop: NexthopAttr,
+    Nexthop: ribModel.Attribute(ip.IpV4Address),
 
     // Well known
     // Mandatory for internal peers or confeds
