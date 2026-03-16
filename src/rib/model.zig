@@ -475,7 +475,7 @@ test "PathAttributes hash and equal" {
         .allocator = allocator,
         .origin = .init(.IGP),
         .asPath = .init(try as_path.clone(allocator)),
-        .nexthop = .init(ip.IpV4Address.parse("1.1.1.1") catch unreachable),
+        .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
         .localPref = .init(100),
         .atomicAggregate = .init(false),
         .multiExitDiscriminator = .init(0),

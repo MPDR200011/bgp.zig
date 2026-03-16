@@ -175,7 +175,7 @@ test "symmetry between attribute conversions obj -> list -> obj" {
         .allocator = testing.allocator,
         .origin = .init(.IGP),
         .asPath = .init(as_path),
-        .nexthop = .init(try ip.IpV4Address.parse("1.1.1.1")),
+        .nexthop = .init(.{ .Address = try ip.IpV4Address.parse("1.1.1.1") }),
         .localPref = .init(200),
         .atomicAggregate = .init(false),
         .multiExitDiscriminator = .init(10),
