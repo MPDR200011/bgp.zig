@@ -1,6 +1,6 @@
 ## TODOs
 
-- FIXME: AS Path Loop detection
+- Attribute flags fine comb
 - Route origination
 - Transmit unrecognized optional transitive attributes
 - Rename Path -> Route
@@ -11,6 +11,10 @@ decision function is in process.  The Phase 2 function locks all Adj-RIBs-In
 prior to commencing its function, and unlocks them on completion."
 - Handling transitive, unknown transitive, etc.
 - For well-known attributes, the Transitive bit MUST be set to 1.
+- When a BGP speaker receives an UPDATE message from an internal peer,
+   the receiving BGP speaker SHALL NOT re-distribute the routing
+   information contained in that UPDATE message to other internal peers
+   (unless the speaker acts as a BGP Route Reflector [RFC2796]).
 
 
 ## Ideas
