@@ -455,8 +455,27 @@ pub const Session = struct {
             self.adjRibInManager.?.removePath(route);
         }
 
-        for (msg.advertisedRoutes) |route| {
-            try self.adjRibInManager.?.setPath(route, pathAttributes.?);
+        if (pathAttributes) |attrs| {
+            var acceptRoutes: bool = true;
+
+            // Detect AS Path Loops
+            if (self.info.?.peerType == .External) {
+                loopDetection: for (attrs.asPath.value.segments) |seg| {
+                    for (seg.contents) |as| {
+                        if (as == self.parent.localAsn) {
+                            acceptRoutes = false;
+                            std.log.debug("Rejecting advertised routes due to AS path loop", .{});
+                            break :loopDetection;
+                        }
+                    }
+                }
+            }
+
+            if (acceptRoutes) {
+                for (msg.advertisedRoutes) |route| {
+                    try self.adjRibInManager.?.setPath(route, attrs);
+                }
+            }
         }
     }
 };
