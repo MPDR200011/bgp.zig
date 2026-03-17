@@ -77,11 +77,28 @@ pub const RoutePath = struct {
     }
 
     pub fn neighboringAS(self: *const Self) ASNumber {
-        std.debug.assert(self.attrs.asPath.value.segments.len > 0);
-        const firstSegment = self.attrs.asPath.value.segments[0];
+        const asPath = &self.attrs.asPath.value;
+        switch (self.attrs.sessionType) {
+            .EBGP => {
+                std.debug.assert(asPath.segments.len > 0);
+                const firstSegment = asPath.segments[0];
 
-        std.debug.assert(firstSegment.segType == .AS_Sequence);
-        return firstSegment.contents[0];
+                std.debug.assert(firstSegment.segType == .AS_Sequence);
+                return firstSegment.contents[0];
+            },
+            .IBGP => {
+                if (asPath.segments.len == 0) {
+                    // FIXME need to return local as
+                    return 0;
+                } else {
+                    if (asPath.segments[0].segType == .AS_Set) {
+                        // FIXME need to return local as
+                        return 0;
+                    }
+                    return asPath.segments[0].contents[0];
+                }
+            }
+        }
     }
 
     pub fn getMED(self: *const Self) u32 {
@@ -93,21 +110,25 @@ pub const RoutePath = struct {
     /// < 0 => self is less prefered than other
     /// = 0 => Tie
     pub fn cmp(self: *const Self, other: *const Self) i32 {
+        // LPREF
         const lPrefComp = @as(i32, @intCast(self.attrs.localPref.value)) - @as(i32, @intCast(other.attrs.localPref.value));
         if (lPrefComp != 0) {
             return lPrefComp;
         }
 
+        // AS Path
         const asPathComp: i32 = @as(i32, @intCast(other.attrs.asPath.value.len())) - @as(i32, @intCast(self.attrs.asPath.value.len()));
         if (asPathComp != 0) {
             return asPathComp;
         }
 
+        // ORIGIN
         const originComp = @intFromEnum(other.attrs.origin.value) - @intFromEnum(self.attrs.origin.value);
         if (originComp != 0) {
             return originComp;
         }
 
+        // Compare MEDs if neighbouring AS is the same
         if (self.attrs.sessionType == .EBGP and other.attrs.sessionType == .EBGP) {
             if (self.neighboringAS() == other.neighboringAS()) {
                 const diff = @as(i64, @intCast(other.getMED())) - @as(i64, @intCast(self.getMED()));
@@ -117,6 +138,7 @@ pub const RoutePath = struct {
             }
         }
 
+        // EBGP > IBGP
         if (self.attrs.sessionType == .EBGP) {
             if (other.attrs.sessionType == .IBGP) {
                 return 1;
