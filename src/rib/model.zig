@@ -387,6 +387,7 @@ pub const PathAttributes = struct {
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
         var copy = Self{
             .allocator = allocator,
+            .sessionType = self.sessionType,
             .origin = self.origin,
             .asPath = self.asPath,
             .nexthop = self.nexthop,

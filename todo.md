@@ -1,5 +1,6 @@
 ## TODOs
 
+- Verify support for empty AS Path from and to internal peers
 - Periodic task that restarts peer sessions
 - MinRouteAdvertisementIntervalTimer
 - Phase 2: Route Selection:
