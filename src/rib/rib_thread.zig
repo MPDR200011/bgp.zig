@@ -264,7 +264,7 @@ pub const SyncTask = struct {
         entryIt = ctx.peerMap.iterator();
         while (entryIt.next()) |entry| {
             const peer = entry.value_ptr.*;
-            const sessionsAddresses = entry.key_ptr;
+            const peerAddress = entry.key_ptr;
 
             // Lock the session to grab the adjIn reference
             peer.session.mutex.lock();
@@ -322,7 +322,7 @@ pub const SyncTask = struct {
                 defer attrs.deinit();
 
                 if (peerType == .External or attrs.nexthop.value == .Self) {
-                    attrs.nexthop.value = .{ .Address = sessionsAddresses.localAddress };
+                    attrs.nexthop.value = .{ .Address = peerAddress.* };
                 }
                 if (peerType == .External) {
                     try attrs.asPath.value.prependASN(peer.localAsn);
@@ -365,7 +365,7 @@ test "Adj -> Main Adds Routes" {
 
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
-    const attrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null };
+    const attrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null };
 
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, attrs);
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, attrs);
@@ -390,7 +390,7 @@ test "Adj -> Main Removes Routes" {
 
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
-    const attrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null };
+    const attrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null };
 
     try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
     try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
@@ -412,10 +412,10 @@ test "Adj -> Main Updates Routes" {
 
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
-    const mainAttrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }) };
+    const mainAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }) };
     try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, mainAttrs);
 
-    const adjAttrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(110) };
+    const adjAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(110) };
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, adjAttrs);
 
     // Asserts
@@ -442,33 +442,28 @@ test "Main Rib Update" {
 
     const route1: model.Route = .{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 };
     const route2: model.Route = .{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 };
-    const route3: model.Route = .{ .prefixData = [4]u8{ 10, 0, 3, 0 }, .prefixLength = 24 };
 
-    const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
+    const asPath: model.ASPath = try .initEmpty(t.allocator);
 
-    const morePrefAttrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(110) };
-    const lessPredAttrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }) };
+    const morePrefAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(110) };
+    const lessPrefAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }) };
 
-    try mainRib.setPath(route1, neighbor1, morePrefAttrs);
-    try mainRib.setPath(route1, neighbor2, lessPredAttrs);
-    mainRib.rib.prefixes.getPtr(route1).?.bestPath = neighbor2;
+    try mainRib.setPath(route1, neighbor1, lessPrefAttrs);
+    try mainRib.setPath(route1, neighbor2, morePrefAttrs);
+    mainRib.rib.prefixes.getPtr(route1).?.bestPath = neighbor1;
 
-    try mainRib.setPath(route2, neighbor1, morePrefAttrs);
-    try mainRib.setPath(route2, neighbor2, lessPredAttrs);
-    mainRib.rib.prefixes.getPtr(route2).?.bestPath = neighbor1;
-
-    try mainRib.setPath(route3, neighbor1, lessPredAttrs);
-    try mainRib.setPath(route3, neighbor2, lessPredAttrs);
-    mainRib.rib.prefixes.getPtr(route3).?.bestPath = neighbor2;
+    try mainRib.setPath(route2, neighbor1, lessPrefAttrs);
+    try mainRib.setPath(route2, neighbor2, morePrefAttrs);
+    mainRib.rib.prefixes.getPtr(route2).?.bestPath = neighbor2;
 
     var res = try updateMainRib(t.allocator, &mainRib);
     defer res.deinit(t.allocator);
 
+    // Assert how many routes were changed
     try t.expectEqual(1, res.items.len);
 
-    try t.expect(mainRib.rib.prefixes.get(route1).?.bestPath.?.equals(neighbor1));
-    try t.expect(mainRib.rib.prefixes.get(route2).?.bestPath.?.equals(neighbor1));
-    try t.expect(mainRib.rib.prefixes.get(route3).?.bestPath.?.equals(neighbor2));
+    try t.expect(mainRib.rib.prefixes.get(route1).?.bestPath.?.equals(neighbor2));
+    try t.expect(mainRib.rib.prefixes.get(route2).?.bestPath.?.equals(neighbor2));
 }
 
 test "Main -> Adj Adds Routes" {
@@ -479,7 +474,7 @@ test "Main -> Adj Adds Routes" {
 
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
-    const mainAttrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null };
+    const mainAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null };
     try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, mainAttrs);
     try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, mainAttrs);
 
@@ -497,7 +492,7 @@ test "Main -> Adj Removes Routes" {
 
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
-    const attrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }) };
+    const attrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }) };
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
     try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
@@ -516,10 +511,10 @@ test "Main -> Adj Updates Routes" {
 
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
-    const mainAttrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null };
+    const mainAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null };
     try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, mainAttrs);
 
-    const adjAttrs = model.PathAttributes{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(110) };
+    const adjAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(110) };
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, adjAttrs);
 
     // Asserts
@@ -545,6 +540,7 @@ test "aggregateRouteUpdates grouping" {
 
     const attrs1 = model.PathAttributes{
         .allocator = alloc,
+        .sessionType = .IBGP,
         .origin = .init(.IGP),
         .asPath = .init(try asPath.clone(alloc)),
         .nexthop = .init(.{ .Address = ip.IpV4Address.init(1, 1, 1, 1) }),
@@ -553,6 +549,7 @@ test "aggregateRouteUpdates grouping" {
 
     const attrs2 = model.PathAttributes{
         .allocator = alloc,
+        .sessionType = .IBGP,
         .origin = .init(.IGP),
         .asPath = .init(try asPath.clone(alloc)),
         .nexthop = .init(.{ .Address = ip.IpV4Address.init(2, 2, 2, 2) }),
@@ -601,6 +598,7 @@ test "filterSplitHorizon" {
 
     const attrs = model.PathAttributes{
         .allocator = alloc,
+        .sessionType = .IBGP,
         .origin = .init(.IGP),
         .asPath = .init(try asPath.clone(alloc)),
         .nexthop = .init(.{ .Address = ip.IpV4Address.init(1, 1, 1, 1) }),

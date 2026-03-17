@@ -3,21 +3,21 @@ const ip = @import("ip");
 
 const session = @import("sessions/session.zig");
 
-const v4PeerSessionAddresses = session.v4PeerSessionAddresses;
+const v4PeerSessionAddress = ip.IpV4Address;
 const Peer = session.Peer;
 
 pub const PeerMapCtx = struct {
     const Self = @This();
 
-    pub fn hash(_: Self, s: v4PeerSessionAddresses) u64 {
+    pub fn hash(_: Self, s: v4PeerSessionAddress) u64 {
         const hashFn = std.hash_map.getAutoHashFn(ip.IpV4Address, void);
-        return hashFn({}, s.localAddress) ^ hashFn({}, s.peerAddress);
+        return hashFn({}, s);
     }
 
-    pub fn eql(_: Self, s1: v4PeerSessionAddresses, s2: v4PeerSessionAddresses) bool {
-        return s1.localAddress.equals(s2.localAddress) and s1.peerAddress.equals(s2.peerAddress);
+    pub fn eql(_: Self, s1: v4PeerSessionAddress, s2: v4PeerSessionAddress) bool {
+        return s1.equals(s2);
     }
 };
 
-pub const PeerMap = std.HashMap(v4PeerSessionAddresses, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
+pub const PeerMap = std.HashMap(v4PeerSessionAddress, *Peer, PeerMapCtx, std.hash_map.default_max_load_percentage);
 
