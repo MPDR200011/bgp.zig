@@ -267,14 +267,11 @@ test "writeUpdateBody() - Minimal (Withdrawn only)" {
 
 
 test "writeUpdateBody() - All Attributes" {
-    const asPath = asPathInit: {
-        const referencePath: AsPath = .{
-            .allocator = testing.allocator,
-            .segments = &[_]ribModel.ASPathSegment{
-                .{.allocator = testing.allocator, .segType = .AS_Sequence, .contents = &[_]u16{65001}}
-            },
-        };
-        break :asPathInit try referencePath.clone(testing.allocator);
+    const asPath: AsPath = .{
+        .allocator = testing.allocator,
+        .segments = try testing.allocator.dupe(ribModel.ASPathSegment, &[_]ribModel.ASPathSegment{
+            .{.allocator = testing.allocator, .segType = .AS_Sequence, .contents = try testing.allocator.dupe(u16, &[_]u16{65001})}
+        }),
     };
 
     const unknownExtData = try testing.allocator.alloc(u8, 300);

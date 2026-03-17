@@ -185,7 +185,6 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
                 } };
             },
             5 => {
-                // FIXME make sure localPref flags are properly set
                 std.debug.assert(attributeLength == 4);
                 break :attr .{ .LocalPref = .{
                     .flags = attributeFlags,
