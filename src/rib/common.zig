@@ -26,6 +26,38 @@ pub const Advertiser = union(enum) {
     }
 };
 
+/// Lexicographical comparison of addresses
+/// > 0 => a1 > a2
+/// < 0 => a1 < a2
+/// = 0 => Tie
+fn compareAddresses(a1: ip.IpAddress, a2: ip.IpAddress) i32 { 
+    // The AFIs should never be different, the program should never reach a
+    // point where this happens. Right?!
+    std.debug.assert(std.meta.activeTag(a1) == std.meta.activeTag(a2));
+
+    switch (a1) {
+        .V4 => {
+            for (0..a1.V4.address.len) |i| {
+                const diff = @as(i32, @intCast(a1.V4.address[i])) - @as(i32, @intCast(a2.V4.address[i]));
+                if (diff == 0) {
+                    continue;
+                }
+                return diff;
+            }
+        },
+        .V6 => {
+            for (0..a1.V6.address.len) |i| {
+                const diff = @as(i32, @intCast(a1.V6.address[i])) - @as(i32, @intCast(a2.V6.address[i]));
+                if (diff == 0) {
+                    continue;
+                }
+                return diff;
+            }
+        }
+    }
+    return 0;
+}
+
 pub const RoutePath = struct {
     const Self = @This();
 
@@ -45,7 +77,9 @@ pub const RoutePath = struct {
     }
 
     pub fn neighboringAS(self: *const Self) ASNumber {
+        std.debug.assert(self.attrs.asPath.value.segments.len > 0);
         const firstSegment = self.attrs.asPath.value.segments[0];
+
         std.debug.assert(firstSegment.segType == .AS_Sequence);
         return firstSegment.contents[0];
     }
@@ -78,7 +112,7 @@ pub const RoutePath = struct {
             if (self.neighboringAS() == other.neighboringAS()) {
                 const diff = @as(i64, @intCast(other.getMED())) - @as(i64, @intCast(self.getMED()));
                 if (diff != 0) {
-                    return diff;
+                    return @intCast(diff);
                 }
             }
         }
@@ -96,7 +130,6 @@ pub const RoutePath = struct {
 
         // FIXME: Lowest peer ID wins
 
-
         // Lowest peer address wins
         switch (self.advertiser) {
             .self => {
@@ -109,7 +142,12 @@ pub const RoutePath = struct {
                     .self => {
                         return -1;
                     },
-                    else => {}
+                    .neighbor => {
+                        const diff = compareAddresses(other.advertiser.neighbor, self.advertiser.neighbor);
+                        if (diff != 0) {
+                            return diff;
+                        }
+                    }
                 }
             }
         }
