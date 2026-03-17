@@ -3,19 +3,58 @@ const ip = @import("ip");
 
 const model = @import("./model.zig");
 
-const common = @import("./common.zig");
-
 const Allocator = std.mem.Allocator;
-
-const RoutePath = common.RoutePath;
-const Advertiser = common.Advertiser;
 
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
 
-const RouteMapCtx = common.RouteHashFns;
+pub const Advertiser = union(enum) {
+    self,
+    neighbor: ip.IpAddress,
 
-const PrefixMap = std.HashMap(Route, RoutePath, RouteMapCtx, std.hash_map.default_max_load_percentage);
+    pub fn equals(self: Advertiser, other: Advertiser) bool {
+        switch (self) {
+            .self => return other == .self,
+            .neighbor => |ip1| switch (other) {
+                .self => return false,
+                .neighbor => |ip2| return ip1.equals(ip2),
+            },
+        }
+    }
+};
+
+pub const AdjRibPath = struct {
+    const Self = @This();
+
+    advertiser: Advertiser,
+    attrs: PathAttributes,
+
+    pub fn deinit(self: *Self) void {
+        self.attrs.deinit();
+    }
+
+    pub fn clone(self: *const Self, alloc: Allocator) !Self {
+        return .{
+            .advertiser = self.advertiser,
+            .attrs = try self.attrs.clone(alloc),
+        };
+    }
+};
+
+const RouteMapCtx = struct {
+    const Self = @This();
+
+    pub fn hash(_: Self, r: Route) u64 {
+        const hashFn = std.hash_map.getAutoHashFn(Route, void);
+        return hashFn({}, r);
+    }
+
+    pub fn eql(_: Self, r1: Route, r2: Route) bool {
+        return (r1.prefixLength == r2.prefixLength) and (std.mem.eql(u8, &r1.prefixData, &r2.prefixData));
+    }
+};
+
+const PrefixMap = std.HashMap(Route, AdjRibPath, RouteMapCtx, std.hash_map.default_max_load_percentage);
 
 pub const AdjRib = struct {
     const Self = @This();

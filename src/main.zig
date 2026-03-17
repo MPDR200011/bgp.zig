@@ -154,7 +154,6 @@ pub fn main() !void {
         }
     }
 
-
     std.log.info("Initializing peer map", .{});
 
     var peerMap = PeerMap.init(gpa);
@@ -276,7 +275,6 @@ test {
     _ = @import("rib/main_rib.zig");
     _ = @import("rib/adj_rib.zig");
     _ = @import("rib/rib_thread.zig");
-    _ = @import("rib/common.zig");
     _ = @import("rib/model.zig");
     _ = @import("rib/utils.zig");
 }

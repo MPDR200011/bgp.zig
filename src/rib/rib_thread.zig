@@ -4,7 +4,8 @@ const ip = @import("ip");
 const adjRibManager = @import("adj_rib_manager.zig");
 const mainRibManager = @import("main_rib_manager.zig");
 const model = @import("model.zig");
-const common = @import("common.zig");
+const adjRibModule = @import("adj_rib.zig");
+const mainRibModule = @import("main_rib.zig");
 const utils = @import("utils.zig");
 const messageModel = @import("../messaging/model.zig");
 const session = @import("../sessions/session.zig");
@@ -17,7 +18,11 @@ const AdjRibOutManager = adjRibManager.AdjRibOutManager;
 const RibManager = mainRibManager.RibManager;
 const Peer = session.Peer;
 
-const RouteUpdate = std.meta.Tuple(&.{ model.Route, common.RoutePath });
+const MainRibAdvertiser = mainRibModule.MainRibAdvertiser;
+const MainRibPath = mainRibModule.MainRibPath;
+const Advertiser = adjRibModule.Advertiser;
+
+const RouteUpdate = std.meta.Tuple(&.{ model.Route, MainRibPath });
 
 const RouteList = std.ArrayList(model.Route);
 const UpdatesList = std.ArrayList(RouteUpdate);
@@ -31,9 +36,18 @@ fn filterSplitHorizon(alloc: Allocator, neighbor: ip.IpAddress, updates: Updates
         filtered.deinit(alloc);
     }
 
-    const neighbor_advertiser: common.Advertiser = .{ .neighbor = neighbor };
     for (updates.items) |update| {
-        if (!update.@"1".advertiser.equals(neighbor_advertiser)) {
+        const updateAdvertiser = update.@"1".advertiser;
+        var shouldInclude = true;
+        switch (updateAdvertiser) {
+            .self => {},
+            .neighbor => |n| {
+                if (n.neighborIp.equals(neighbor)) {
+                    shouldInclude = false;
+                }
+            },
+        }
+        if (shouldInclude) {
             try filtered.append(alloc, .{ update.@"0", try update.@"1".clone(alloc) });
         }
     }
@@ -102,13 +116,18 @@ fn aggregateRouteUpdates(alloc: Allocator, updates: *UpdatesList) !AggregatedRou
 }
 
 fn ensurePeerRoutesDropped(peer: *const Peer, mainRib: *RibManager) void {
+    const advertiser: MainRibAdvertiser = .{ .neighbor = .{
+        .neighborIp = .{ .V4 = peer.sessionAddresses.peerAddress },
+        .peerId = 0, // The session is down, this information won't be available
+        .peerAsn = 0, // The session is down, this information won't be available
+    } };
     var mainIt = mainRib.rib.prefixes.iterator();
     while (mainIt.next()) |mainEntry| {
-        mainEntry.value_ptr.removePath(.{ .neighbor = .{ .V4 = peer.sessionAddresses.peerAddress } });
+        mainEntry.value_ptr.removePath(advertiser);
     }
 }
 
-fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibInManager, mainRib: *RibManager) !SyncResult {
+fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibInManager, mainRib: *RibManager, advertiser: MainRibAdvertiser) !SyncResult {
     var res: SyncResult = .init;
     errdefer res.deinit(alloc);
 
@@ -117,7 +136,7 @@ fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibInManager, mainRib
     while (mainIt.next()) |mainEntry| {
 
         // Check if route has path from this neighbor
-        if (!mainEntry.value_ptr.paths.contains(.{ .neighbor = adjRib.neighbor })) {
+        if (!mainEntry.value_ptr.paths.contains(advertiser)) {
             continue;
         }
 
@@ -131,16 +150,16 @@ fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibInManager, mainRib
     }
 
     for (res.deletedRoutes.items) |routeToRemove| {
-        _ = mainRib.rib.removePath(routeToRemove, .{ .neighbor = adjRib.neighbor });
+        _ = mainRib.rib.removePath(routeToRemove, advertiser);
     }
 
     // Update all paths
     var adjIt = adjRib.adjRib.prefixes.iterator();
     while (adjIt.next()) |adjEntry| {
         // FIXME: Equality check to save on work
-        try mainRib.rib.setPath(adjEntry.key_ptr.*, .{ .neighbor = adjRib.neighbor }, adjEntry.value_ptr.attrs);
+        try mainRib.rib.setPath(adjEntry.key_ptr.*, advertiser, adjEntry.value_ptr.attrs);
 
-        try res.updatedRoutes.append(alloc, .{ adjEntry.key_ptr.*, .{ .advertiser = .{ .neighbor = adjRib.neighbor }, .attrs = try adjEntry.value_ptr.attrs.clone(alloc) } });
+        try res.updatedRoutes.append(alloc, .{ adjEntry.key_ptr.*, .{ .advertiser = advertiser, .attrs = try adjEntry.value_ptr.attrs.clone(alloc) } });
     }
 
     return res;
@@ -210,7 +229,13 @@ fn syncFromMainToAdjOut(alloc: Allocator, adjRib: *AdjRibOutManager, mainRib: *c
     var mainIt = mainRib.rib.prefixes.iterator();
     while (mainIt.next()) |ribEntry| {
         const bestPath = ribEntry.value_ptr.paths.get(ribEntry.value_ptr.bestPath.?).?;
-        try adjRib.adjRib.setPath(ribEntry.key_ptr.*, ribEntry.value_ptr.bestPath.?, bestPath.attrs);
+
+        const adjAdvertiser: Advertiser = switch (ribEntry.value_ptr.bestPath.?) {
+            .self => .self,
+            .neighbor => |n| .{ .neighbor = n.neighborIp },
+        };
+
+        try adjRib.adjRib.setPath(ribEntry.key_ptr.*, adjAdvertiser, bestPath.attrs);
 
         try res.updatedRoutes.append(alloc, .{ ribEntry.key_ptr.*, try bestPath.clone(alloc) });
     }
@@ -248,11 +273,17 @@ pub const SyncTask = struct {
             adjIn.ribMutex.lock();
             defer adjIn.ribMutex.unlock();
 
+            const advertiser: MainRibAdvertiser = .{ .neighbor = .{
+                .neighborIp = adjIn.neighbor,
+                .peerId = peer.session.info.?.peerId,
+                .peerAsn = peer.session.info.?.peerAsn,
+            } };
+
             // Once we grab the adjIn and lock it we can unlock the session
             // While the adjIn is locked the session can't terminate
             peer.session.mutex.unlock();
 
-            var result = try syncFromAdjInToMain(ctx.allocator, adjIn, ctx.mainRib);
+            var result = try syncFromAdjInToMain(ctx.allocator, adjIn, ctx.mainRib, advertiser);
             result.deinit(ctx.allocator);
         }
 
@@ -306,7 +337,7 @@ pub const SyncTask = struct {
 
             // TODO: Message packaging, one message per prefix is naive
             for (result.deletedRoutes.items) |deletedRoute| {
-                try peer.session.sendMessage(.{ .UPDATE = .{ 
+                try peer.session.sendMessage(.{ .UPDATE = .{
                     .allocator = ctx.allocator,
                     .withdrawnRoutes = &[_]model.Route{deletedRoute},
                     .advertisedRoutes = &[_]model.Route{},
@@ -331,8 +362,8 @@ pub const SyncTask = struct {
                 for (group.value_ptr.items) |route| {
                     std.log.info("Sending update", .{});
                     var msg: messageModel.BgpMessage = .{ .UPDATE = try .init(
-                        ctx.allocator, 
-                        &[_]model.Route{}, 
+                        ctx.allocator,
+                        &[_]model.Route{},
                         &[_]model.Route{route},
                         try utils.convertUnifiedStructToAttributeList(ctx.allocator, peerType, attrs),
                     ) };
@@ -370,7 +401,8 @@ test "Adj -> Main Adds Routes" {
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, attrs);
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, attrs);
 
-    var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib);
+    const advertiser: MainRibAdvertiser = .{ .neighbor = .{ .neighborIp = adjRib.neighbor, .peerId = 1, .peerAsn = 65001 } };
+    var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib, advertiser);
     defer res.deinit(t.allocator);
 
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 2);
@@ -392,12 +424,13 @@ test "Adj -> Main Removes Routes" {
 
     const attrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null };
 
-    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
-    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
+    const advertiser: MainRibAdvertiser = .{ .neighbor = .{ .neighborIp = adjRib.neighbor, .peerId = 1, .peerAsn = 65001 } };
+    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, advertiser, attrs);
+    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, advertiser, attrs);
 
     try t.expectEqual(mainRib.rib.prefixes.count(), 2);
 
-    var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib);
+    var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib, advertiser);
     defer res.deinit(t.allocator);
 
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 0);
@@ -412,8 +445,10 @@ test "Adj -> Main Updates Routes" {
 
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
+    const advertiser: MainRibAdvertiser = .{ .neighbor = .{ .neighborIp = adjRib.neighbor, .peerId = 1, .peerAsn = 65001 } };
+
     const mainAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }) };
-    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, mainAttrs);
+    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, advertiser, mainAttrs);
 
     const adjAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(110) };
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, adjAttrs);
@@ -422,23 +457,23 @@ test "Adj -> Main Updates Routes" {
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 1);
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
     try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref.value);
-    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref.value);
+    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(advertiser).?.attrs.localPref.value);
 
-    var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib);
+    var res = try syncFromAdjInToMain(t.allocator, &adjRib, &mainRib, advertiser);
     defer res.deinit(t.allocator);
 
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 1);
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
     try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref.value);
-    try t.expectEqual(110, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref.value);
+    try t.expectEqual(110, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(advertiser).?.attrs.localPref.value);
 }
 
 test "Main Rib Update" {
     var mainRib: RibManager = try .init(t.allocator);
     defer mainRib.deinit();
 
-    const neighbor1: common.Advertiser = .{ .neighbor = .{ .V4 = try .parse("192.168.0.1") } };
-    const neighbor2: common.Advertiser = .{ .neighbor = .{ .V4 = try .parse("192.168.0.2") } };
+    const neighbor1: MainRibAdvertiser = .{ .neighbor = .{ .neighborIp = .{ .V4 = try .parse("192.168.0.1") }, .peerId = 1, .peerAsn = 65001 } };
+    const neighbor2: MainRibAdvertiser = .{ .neighbor = .{ .neighborIp = .{ .V4 = try .parse("192.168.0.2") }, .peerId = 2, .peerAsn = 65002 } };
 
     const route1: model.Route = .{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 };
     const route2: model.Route = .{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 };
@@ -474,9 +509,11 @@ test "Main -> Adj Adds Routes" {
 
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
+    const advertiser: MainRibAdvertiser = .{ .neighbor = .{ .neighborIp = adjRib.neighbor, .peerId = 1, .peerAsn = 65001 } };
+
     const mainAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null };
-    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, mainAttrs);
-    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, mainAttrs);
+    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, advertiser, mainAttrs);
+    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, advertiser, mainAttrs);
 
     var res = try syncFromMainToAdjOut(t.allocator, &adjRib, &mainRib);
     defer res.deinit(t.allocator);
@@ -492,10 +529,12 @@ test "Main -> Adj Removes Routes" {
 
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
+    const advertiser: MainRibAdvertiser = .{ .neighbor = .{ .neighborIp = adjRib.neighbor, .peerId = 1, .peerAsn = 65001 } };
+
     const attrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }) };
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
-    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, attrs);
+    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 }, advertiser, attrs);
 
     var res = try syncFromMainToAdjOut(t.allocator, &adjRib, &mainRib);
     defer res.deinit(t.allocator);
@@ -509,10 +548,12 @@ test "Main -> Adj Updates Routes" {
     defer adjRib.deinit();
     defer mainRib.deinit();
 
+    const advertiser: MainRibAdvertiser = .{ .neighbor = .{ .neighborIp = adjRib.neighbor, .peerId = 1, .peerAsn = 65001 } };
+
     const asPath: model.ASPath = .{ .allocator = t.allocator, .segments = try t.allocator.dupe(model.ASPathSegment, &[_]model.ASPathSegment{}) };
 
     const mainAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null };
-    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, mainAttrs);
+    try mainRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, advertiser, mainAttrs);
 
     const adjAttrs = model.PathAttributes{ .allocator = t.allocator, .sessionType = .IBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(110) };
     try adjRib.setPath(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }, .{ .neighbor = adjRib.neighbor }, adjAttrs);
@@ -521,7 +562,7 @@ test "Main -> Adj Updates Routes" {
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 1);
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
     try t.expectEqual(110, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref.value);
-    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref.value);
+    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(advertiser).?.attrs.localPref.value);
 
     var res = try syncFromMainToAdjOut(t.allocator, &adjRib, &mainRib);
     defer res.deinit(t.allocator);
@@ -529,7 +570,7 @@ test "Main -> Adj Updates Routes" {
     try t.expectEqual(adjRib.adjRib.prefixes.count(), 1);
     try t.expectEqual(mainRib.rib.prefixes.count(), 1);
     try t.expectEqual(100, adjRib.adjRib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.attrs.localPref.value);
-    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(.{ .neighbor = adjRib.neighbor }).?.attrs.localPref.value);
+    try t.expectEqual(100, mainRib.rib.prefixes.get(.{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 }).?.paths.get(advertiser).?.attrs.localPref.value);
 }
 
 test "aggregateRouteUpdates grouping" {
@@ -619,7 +660,7 @@ test "filterSplitHorizon" {
     // Route 1 from self
     try updates.append(alloc, .{ route1, .{ .advertiser = .self, .attrs = try attrs.clone(alloc) } });
     // Route 2 from neighbor
-    try updates.append(alloc, .{ route2, .{ .advertiser = .{ .neighbor = neighbor_ip }, .attrs = try attrs.clone(alloc) } });
+    try updates.append(alloc, .{ route2, .{ .advertiser = .{ .neighbor = .{ .neighborIp = neighbor_ip, .peerId = 1, .peerAsn = 65001 } }, .attrs = try attrs.clone(alloc) } });
 
     try t.expectEqual(@as(usize, 2), updates.items.len);
 

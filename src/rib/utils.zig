@@ -81,7 +81,7 @@ pub fn convertAttributeListToUnifiedStruct(allocator: Allocator, peerType: sessi
     std.mem.sort(ribModel.UnknownAttr, unknownAttributes.items, {}, sortFn);
 
     attributes.unknownAttributes = try unknownAttributes.toOwnedSlice(attributes.allocator);
-    
+
     if (!originRead) {
         return error.MissingOriginAttribute;
     }
@@ -107,13 +107,13 @@ pub fn convertUnifiedStructToAttributeList(allocator: Allocator, peerType: sessi
         .value = attrs.origin.value
     } });
     {
-        try attributes.list.append(allocator, .{ .AsPath = .{ 
+        try attributes.list.append(allocator, .{ .AsPath = .{
             .flags = ribModel.ATTR_TRANSITIVE_FLAG,
             .value = try attrs.asPath.value.clone(allocator),
         } });
     }
     std.debug.assert(std.meta.activeTag(attrs.nexthop.value) == .Address);
-    try attributes.list.append(allocator, .{ .Nexthop = .{ 
+    try attributes.list.append(allocator, .{ .Nexthop = .{
         .flags = ribModel.ATTR_TRANSITIVE_FLAG,
         .value = attrs.nexthop.value.Address,
     } });
@@ -157,7 +157,7 @@ pub fn convertUnifiedStructToAttributeList(allocator: Allocator, peerType: sessi
 test "symmetry between attribute conversions obj -> list -> obj" {
     const testing = std.testing;
     const ip = @import("ip");
-    
+
     // Create a robust initial structure
     const as_path_seg = ribModel.ASPathSegment{
         .allocator = testing.allocator,
