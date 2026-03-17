@@ -68,10 +68,9 @@ fn wrapper(ctx: AcceptContext) !void {
     }
     defer ctx.allocator.free(localAddrStr);
 
-    const peer = ctx.peerMap.get(v4PeerSessionAddresses{
-        .localAddress = try .parse(localAddrStr[0..localSepIdx]),
-        .peerAddress = try .parse(peerAddrStr[0..peerSepIdx]),
-    }) orelse {
+    const peer = ctx.peerMap.get(
+        try .parse(peerAddrStr[0..peerSepIdx])
+    ) orelse {
         std.log.info("Received connection request from unconfigured peer localAddr={s} remoteAddr={s}", .{ localAddrStr, peerAddrStr });
         return AcceptHandlerError.PeerNotConfigured;
     };

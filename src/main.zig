@@ -202,7 +202,7 @@ pub fn main() !void {
             return err;
         };
 
-        try peerMap.put(peer.sessionAddresses, peer);
+        try peerMap.put(peer.sessionAddresses.peerAddress, peer);
     }
 
     std.log.info("Starting peer state machines", .{});
