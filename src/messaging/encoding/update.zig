@@ -290,7 +290,7 @@ test "writeUpdateBody() - All Attributes" {
     try list.append(testing.allocator, .{ .AtomicAggregate = .{ .flags = ribModel.ATTR_TRANSITIVE_FLAG, .value = true } });
     try list.append(testing.allocator, .{ .Aggregator = .{ 
         .flags = ribModel.ATTR_OPTIONAL_FLAG | ribModel.ATTR_TRANSITIVE_FLAG, 
-        .value = .{ .as = 65001, .address = ip.IpVAddress.init(1, 2, 3, 4) } 
+        .value = .{ .as = 65001, .address = ip.IpV4Address.init(1, 2, 3, 4) } 
     } });
     try list.append(testing.allocator, .{ .Unknown = .{ 
         .flags = ribModel.ATTR_OPTIONAL_FLAG, 
