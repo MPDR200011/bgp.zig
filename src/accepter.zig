@@ -170,4 +170,5 @@ pub fn start(self: *Self, peerMap: *const PeerMap) !std.Thread {
 
 pub fn stop(self: *Self) !void {
     try posix.shutdown(self.socket, .both);
+    posix.close(self.socket);
 }
