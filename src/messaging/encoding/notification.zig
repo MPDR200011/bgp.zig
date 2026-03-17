@@ -16,5 +16,5 @@ pub fn writeNotification(notification: model.NotificationMessage, writer: *std.I
     try writer.writeInt(u8, @intFromEnum(notification.errorCode), .big);
     try writer.writeInt(u8, getErrorSubCodeValue(notification.errorKind), .big);
 
-    // TODO: notification data
+    // FIXME: notification data
 }

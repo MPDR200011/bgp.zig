@@ -137,7 +137,7 @@ fn syncFromAdjInToMain(alloc: Allocator, adjRib: *const AdjRibInManager, mainRib
     // Update all paths
     var adjIt = adjRib.adjRib.prefixes.iterator();
     while (adjIt.next()) |adjEntry| {
-        // TODO: Equality check to save on work
+        // FIXME: Equality check to save on work
         try mainRib.rib.setPath(adjEntry.key_ptr.*, .{ .neighbor = adjRib.neighbor }, adjEntry.value_ptr.attrs);
 
         try res.updatedRoutes.append(alloc, .{ adjEntry.key_ptr.*, .{ .advertiser = .{ .neighbor = adjRib.neighbor }, .attrs = try adjEntry.value_ptr.attrs.clone(alloc) } });
@@ -187,7 +187,6 @@ fn updateMainRib(alloc: Allocator, mainRib: *RibManager) !RouteList {
         }
     }
 
-    // TODO: what if the best path got updated in the adj-in -> main sync?
     return updatedRoutes;
 }
 

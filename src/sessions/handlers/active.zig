@@ -11,11 +11,6 @@ const PostHandlerAction = sessionLib.PostHandlerAction;
 const Event = sessionLib.Event;
 
 pub fn handleStop(session: *Session) !PostHandlerAction {
-
-    // TODO: If the DelayOpenTimer is running and the
-    // SendNOTIFICATIONwithoutOPEN session attribute is set, the
-    // local system sends a NOTIFICATION with a Cease,
-
     session.delayOpenTimer.cancel();
     session.closeConnection();
     session.connectionRetryCount = 0;
@@ -67,8 +62,6 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
 
     session.connectionRetryCount += 1;
 
-    // TODO: peer oscillation
-
     return .transition(.IDLE);
 }
 
@@ -112,15 +105,11 @@ pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !
     session.closeConnection();
     session.connectionRetryCount += 1;
 
-    // TODO peer oscillation dampening here
-
     return .transition(.IDLE);
 }
 
 pub fn handleOtherEvents(session: *Session) !PostHandlerAction {
     session.shutdownFatal();
-
-    // TODO: Peer Oscillation goes here, if ever
 
     return .transition(.IDLE);
 }

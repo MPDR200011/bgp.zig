@@ -15,13 +15,9 @@ fn handleStop(session: *Session) !PostHandlerAction {
 
     session.connectionRetryTimer.cancel();
 
-    // TODO: delete all routes
-
     session.releaseBgpResources();
     session.closeConnection();
     session.connectionRetryCount = 0;
-
-    // TODO handle the automatic stop event
 
     return .{
         .Transition = .IDLE,
@@ -59,8 +55,6 @@ fn handleTcpFailed(session: *Session) !PostHandlerAction {
     session.keepAliveTimer.cancel();
     session.holdTimer.cancel();
 
-    // TODO delete all routes
-
     session.releaseBgpResources();
     session.closeConnection();
     session.connectionRetryCount += 1;
@@ -74,14 +68,10 @@ fn handleConnectionCollision(session: *Session) !PostHandlerAction {
 
     session.connectionRetryTimer.cancel();
 
-    // TODO delete all routes
-
     session.releaseBgpResources();
     session.closeConnection();
 
     session.connectionRetryCount += 1;
-
-    // TODO oscillation damping
 
     return .transition(.IDLE);
 }
@@ -105,8 +95,6 @@ fn handleUpdateReceived(session: *Session, msg: model.UpdateMessage) !PostHandle
 fn handleOtherEvents(session: *Session) !PostHandlerAction {
     session.shutdownFatal();
 
-    // TODO: Peer Oscillation goes here, if ever
-
     return .transition(.IDLE);
 }
 
@@ -118,9 +106,6 @@ pub fn handleEvent(session: *Session, event: Event) !PostHandlerAction {
         .TcpConnectionFailed => return try handleTcpFailed(session),
         .KeepAliveReceived => return try handleKeepAliveReceived(session),
         .UpdateReceived => |msg| return try handleUpdateReceived(session, msg),
-        // TODO: in case I want, implement collision handling for this state,
-        // It is not required though
-
         // Start events are ignored
         .Start => return .keep,
         // TODO handle message checking error events

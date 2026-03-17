@@ -71,8 +71,6 @@ fn writeLocalPref(writer: *std.Io.Writer, localPref: * const ribModel.LocalPrefA
 }
 
 fn writeAttributes(attrs: *const AttributeList, writer: *std.Io.Writer) !void {
-    // TODO: For well-known attributes, the Transitive bit MUST be set to 1.
-
     for (attrs.list.items) |attr| {
         switch (attr) {
             .Origin => |origin| {

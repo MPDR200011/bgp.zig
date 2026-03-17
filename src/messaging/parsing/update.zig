@@ -70,7 +70,7 @@ fn readRoutes(self: *Self, routesLength: u16) !std.array_list.Managed(Route) {
 }
 
 fn readOrigin(self: *Self) !ribModel.Origin {
-    // TODO: origin value validation
+    // FIXME: origin value validation
     const origin: ribModel.Origin = @enumFromInt(try self.reader.takeInt(u8, .big));
     return origin;
 }
@@ -86,7 +86,7 @@ fn readAsPath(self: *Self, bytesLength: u16) !ribModel.ASPath {
 
     var currentRead: usize = 0;
     while (currentRead < bytesLength) {
-        // TODO: segment type value validation
+        // FIXME: segment type value validation
         const segmentType: ribModel.ASPathSegmentType = @enumFromInt(try self.reader.takeInt(u8, .big));
         const segmentLength: usize = @intCast(try self.reader.takeInt(u8, .big));
 
@@ -158,8 +158,6 @@ fn readAttributes(self: *Self, attributesLength: u16) !AttributeList {
         const extendedLength: bool = (attributeFlags & ribModel.ATTR_EXTENDED_LENGTH_FLAG) > 0;
         const attributeLength: u16 = if (extendedLength) try self.reader.takeInt(u16, .big) else @intCast(try self.reader.takeInt(u8, .big));
 
-        // TODO: Unrecognized non-transitive optional attributes MUST be
-        // quietly ignored and not passed along to other BGP peers.
         const attribute: PathAttribute = attr: switch (attributeType) {
             1 => {
                 break :attr .{ .Origin = .{

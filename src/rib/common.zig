@@ -61,11 +61,11 @@ pub const RoutePath = struct {
             return originComp;
         }
 
-        // TODO: handle MED
+        // FIXME: handle MED
 
-        // TODO: external peer > internal peer
+        // FIXME: external peer > internal peer
 
-        // TODO: nexthop cost tie break
+        // FIXME: nexthop cost tie break
 
         // Lowest peer ID wins
 
