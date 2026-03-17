@@ -1,7 +1,7 @@
 const std = @import("std");
-const ip = @import("ip");
-
 const Allocator = std.mem.Allocator;
+
+const ip = @import("ip");
 
 pub const Route = struct {
     prefixLength: u8,
@@ -16,6 +16,7 @@ pub const Origin = enum(u8) {
     INCOMPLETE = 2,
 };
 
+pub const ASNumber = u16;
 pub const ASPathSegmentType = enum(u8) { AS_Set = 1, AS_Sequence = 2 };
 pub const ASPathSegment = struct {
     const Self = @This();
@@ -23,7 +24,7 @@ pub const ASPathSegment = struct {
     allocator: Allocator,
 
     segType: ASPathSegmentType,
-    contents: []u16,
+    contents: []ASNumber,
 
     pub fn deinit(self: Self) void {
         self.allocator.free(self.contents);
@@ -330,10 +331,17 @@ pub const MultiExitDiscriminatorAttr = Attribute(u32);
 pub const AggregatorAttr = Attribute(Aggregator);
 pub const UnknownAttr = Attribute(Unknown);
 
+pub const SessionType = enum {
+    EBGP,
+    IBGP
+};
+
 pub const PathAttributes = struct {
     const Self = @This();
 
     allocator: Allocator,
+
+    sessionType: SessionType = .EBGP,
 
     // Well known, Mandatory
     origin: OriginAttr,

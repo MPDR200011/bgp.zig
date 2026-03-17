@@ -27,6 +27,8 @@ session attribute is set, the local system sends a NOTIFICATION with a Cease
         - set lpref
         - remove med
         - as path prepend
+- Tie break routes by calculating the nexthop metric:
+    - Requires other routing protocols to determine that...
 
 ## Ideas
 

@@ -6,8 +6,10 @@ const model = @import("model.zig");
 const Allocator = std.mem.Allocator;
 
 const PathAttributes = model.PathAttributes;
+const ASNumber = model.ASNumber;
 const ASPath = model.ASPath;
 const Route = model.Route;
+
 
 pub const Advertiser = union(enum) {
     self,
@@ -42,6 +44,17 @@ pub const RoutePath = struct {
         };
     }
 
+    pub fn neighboringAS(self: *const Self) ASNumber {
+        const firstSegment = self.attrs.asPath.value.segments[0];
+        std.debug.assert(firstSegment.segType == .AS_Sequence);
+        return firstSegment.contents[0];
+    }
+
+    pub fn getMED(self: *const Self) u32 {
+        const med = self.attrs.multiExitDiscriminator orelse return 0;
+        return med.value;
+    }
+
     /// > 0 => self is more prefered than other
     /// < 0 => self is less prefered than other
     /// = 0 => Tie
@@ -61,15 +74,46 @@ pub const RoutePath = struct {
             return originComp;
         }
 
-        // FIXME: handle MED
+        if (self.attrs.sessionType == .EBGP and other.attrs.sessionType == .EBGP) {
+            if (self.neighboringAS() == other.neighboringAS()) {
+                const diff = @as(i64, @intCast(other.getMED())) - @as(i64, @intCast(self.getMED()));
+                if (diff != 0) {
+                    return diff;
+                }
+            }
+        }
 
-        // FIXME: external peer > internal peer
+        if (self.attrs.sessionType == .EBGP) {
+            if (other.attrs.sessionType == .IBGP) {
+                return 1;
+            }
+        } else {
+            // self == IBGP
+            if (other.attrs.sessionType == .EBGP) {
+                return -1;
+            }
+        }
 
-        // FIXME: nexthop cost tie break
+        // FIXME: Lowest peer ID wins
 
-        // Lowest peer ID wins
 
         // Lowest peer address wins
+        switch (self.advertiser) {
+            .self => {
+                // There shouldn't be two originations of the same route
+                std.debug.assert(std.meta.activeTag(other.advertiser) != .self);
+                return 1;
+            },
+            .neighbor => {
+                switch (other.advertiser) {
+                    .self => {
+                        return -1;
+                    },
+                    else => {}
+                }
+            }
+        }
+
         // TODO: some vendor implementations tie break based on path age, should look into that
         return 0;
     }
