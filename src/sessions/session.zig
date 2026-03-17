@@ -388,6 +388,7 @@ pub const Session = struct {
                 std.log.debug("Error shutting down socket: {}", .{err});
                 std.process.abort();
             };
+            c.close();
             self.peerConnectionThread.?.join();
             std.log.debug("thread closed", .{});
         }
