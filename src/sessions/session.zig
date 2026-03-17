@@ -423,7 +423,7 @@ pub const Session = struct {
     }
 
     pub fn handleEvent(self: *Self, event: Event) void {
-        // TODO: find way to not have to do this...
+        // FIXME: find way to not have to do this...
         defer @constCast(&event).deinit();
 
         self.mutex.lock();

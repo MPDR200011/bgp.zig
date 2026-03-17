@@ -21,7 +21,7 @@ pub fn convertAttributeListToUnifiedStruct(allocator: Allocator, peerType: sessi
     var unknownAttributes: std.ArrayListUnmanaged(ribModel.UnknownAttr) = .empty;
     defer unknownAttributes.deinit(attributes.allocator);
 
-    // TODO: validate attribute flags
+    // FIXME: validate attribute flags
 
     for (attrList.list.items) |attr| {
         switch (attr) {

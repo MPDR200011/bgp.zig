@@ -19,8 +19,6 @@ fn handleStop(session: *Session) !PostHandlerAction {
     session.connectionRetryTimer.cancel();
     session.connectionRetryCount = 0;
 
-    // TODO handle the automatic stop event
-
     return .transition(.IDLE);
 }
 
@@ -33,8 +31,6 @@ fn handleHoldTimerExpires(session: *Session) !PostHandlerAction {
 
     session.connectionRetryTimer.cancel();
     session.connectionRetryCount += 1;
-
-    // TODO peer oscillation here
 
     return .transition(.IDLE);
 }
@@ -84,7 +80,7 @@ fn handleKeepAliveReceived(session: *Session) !PostHandlerAction {
 
 pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !PostHandlerAction {
     if (notif.errorKind != .UnsupportedVersionNumber) {
-        // TODO: I'm sure we should handle this differently
+        // FIXME: I'm sure we should handle this differently
         return .keep;
     }
 
@@ -93,15 +89,11 @@ pub fn handleNotification(session: *Session, notif: model.NotificationMessage) !
     session.releaseBgpResources();
     session.closeConnection();
 
-    // TODO peer oscillation dampening here
-
     return .transition(.IDLE);
 }
 
 fn handleOtherEvents(session: *Session) !PostHandlerAction {
     session.shutdownFatal();
-
-    // TODO: Peer Oscillation goes here, if ever
 
     return .transition(.IDLE);
 }

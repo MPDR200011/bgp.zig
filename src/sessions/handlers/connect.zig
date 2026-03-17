@@ -105,15 +105,11 @@ fn handleNotification(session: *Session, notif: model.NotificationMessage) !Post
     session.closeConnection();
     session.connectionRetryCount += 1;
 
-    // TODO peer oscillation dampening here
-
     return .transition(.IDLE);
 }
 
 pub fn handleOtherEvents(session: *Session) !PostHandlerAction {
     session.shutdownFatal();
-
-    // TODO: Peer Oscillation goes here, if ever
 
     return .transition(.IDLE);
 }

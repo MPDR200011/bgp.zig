@@ -22,7 +22,6 @@ pub const MessageEncoder = struct {
     pub fn deinit(_: Self) void {}
 
     pub fn writeMessage(self: *Self, msg: model.BgpMessage, messageWriter: *std.io.Writer) !void {
-        // TODO implement message size limits
 
         // TODO decide if I want to allocate a buffer everytime or just get a
         // pre-allocated one, or even pre-calculate the message length

@@ -351,18 +351,6 @@ pub const PathAttributes = struct {
 
     unknownAttributes: []UnknownAttr = &[_]UnknownAttr{},
 
-    // TODO: track partial bit in recognised attrs
-    // If a path with a recognized, transitive optional attribute is accepted
-    // and passed along to other BGP peers and the Partial bit in the Attribute
-    // Flags octet is set to 1 by some previous AS, it MUST NOT be set back to
-    // 0 by the current AS.
-
-    // TODO: support unrecognised transitive attributes
-    // If a path with an unrecognized transitive optional attribute is accepted
-    // and passed to other BGP peers, then the unrecognized transitive optional
-    // attribute of that path MUST be passed, along with the path, to other BGP
-    // peers with the Partial bit in the Attribute Flags octet set to 1.
-
     pub const empty: Self = .{
         .allocator = undefined,
         .origin = undefined,
@@ -430,8 +418,6 @@ pub const PathAttributes = struct {
         // This assume the unknown attributes are sorted by type code
         if (self.unknownAttributes.len != other.unknownAttributes.len) return false;
         for (self.unknownAttributes, 0..) |uk, i| {
-            // TODO: do we care about flags being equal?
-            if (uk.flags != other.unknownAttributes[i].flags) return false;
             if (!uk.value.equal(&other.unknownAttributes[i].value)) return false;
         }
 

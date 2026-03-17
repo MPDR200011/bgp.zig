@@ -141,7 +141,6 @@ pub fn main() !void {
     {
         for (processConfig.networks) |network| {
             const route = try configParsing.parseNetworkToRoute(network);
-            // TODO: idea, origination policy
             try mainRib.setPath(route, .self, .{
                 .allocator = gpa,
                 .origin = .init(.IGP),
