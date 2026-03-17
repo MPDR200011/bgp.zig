@@ -23,7 +23,7 @@ pub const ASPathSegment = struct {
     allocator: Allocator,
 
     segType: ASPathSegmentType,
-    contents: []const u16,
+    contents: []u16,
 
     pub fn deinit(self: Self) void {
         self.allocator.free(self.contents);
@@ -59,7 +59,7 @@ pub const ASPath = struct {
     const Self = @This();
 
     allocator: Allocator,
-    segments: []const ASPathSegment,
+    segments: []ASPathSegment,
 
     pub fn initEmpty(alloc: Allocator) !Self {
         return .{
@@ -128,9 +128,23 @@ pub const ASPath = struct {
         return size;
     }
 
+    fn prependSeqWithASN(self: *Self, asn: u16) !void {
+        const newSegments = try self.allocator.alloc(ASPathSegment, self.segments.len + 1);
+        std.mem.copyForwards(ASPathSegment, newSegments[1..], self.segments);
+
+        const contents = try self.allocator.alloc(u16, 1);
+        contents[0] = asn;
+        newSegments[0] = ASPathSegment{
+            .allocator = self.allocator,
+            .contents = contents,
+            .segType = .AS_Sequence,
+        };
+
+        self.allocator.free(self.segments);
+        self.segments = newSegments;
+    }
+
     pub fn prependASN(self: *Self, asn: u16) !void {
-        // FIXME: Missing overflow protection (prevent segment length from
-        // going over 255)
         if (self.segments.len == 0) {
             const newSegments = try self.allocator.alloc(ASPathSegment, 1);
 
@@ -147,31 +161,21 @@ pub const ASPath = struct {
             return;
         }
 
-        switch (self.segments[0].segType) {
+        segType: switch (self.segments[0].segType) {
             .AS_Sequence => {
-                var firstSegment = self.segments[0];
+                if (self.segments[0].contents.len >= 255) {
+                    try self.prependSeqWithASN(asn);
+                    break :segType;
+                }
+
+                var firstSegment = &self.segments[0];
                 const newContents = try firstSegment.allocator.alloc(u16, firstSegment.contents.len + 1);
                 newContents[0] = asn;
                 std.mem.copyForwards(u16, newContents[1..], firstSegment.contents);
                 firstSegment.allocator.free(firstSegment.contents);
                 firstSegment.contents = newContents;
-                @constCast(self.segments)[0] = firstSegment;
             },
-            .AS_Set => {
-                const newSegments = try self.allocator.alloc(ASPathSegment, self.segments.len + 1);
-                std.mem.copyForwards(ASPathSegment, newSegments[1..], self.segments);
-
-                const contents = try self.allocator.alloc(u16, 1);
-                contents[0] = asn;
-                newSegments[0] = ASPathSegment{
-                    .allocator = self.allocator,
-                    .contents = contents,
-                    .segType = .AS_Sequence,
-                };
-
-                self.allocator.free(self.segments);
-                self.segments = newSegments;
-            },
+            .AS_Set => try self.prependSeqWithASN(asn),
         }
     }
 
@@ -556,4 +560,32 @@ test "ASPath.prependASN" {
     try std.testing.expectEqual(@as(usize, 1), as_set_path.segments[0].contents.len);
     try std.testing.expectEqual(@as(u16, 500), as_set_path.segments[0].contents[0]);
     try std.testing.expectEqual(ASPathSegmentType.AS_Set, as_set_path.segments[1].segType);
+
+    // 4. Test prepending to full AS_Sequence (should create new AS_Sequence)
+    var full_as_seq_path = ASPath{
+        .allocator = allocator,
+        .segments = try allocator.alloc(ASPathSegment, 1),
+    };
+    @constCast(full_as_seq_path.segments)[0] = ASPathSegment{
+        .allocator = allocator,
+        .segType = .AS_Sequence,
+        .contents = try allocator.alloc(u16, 255),
+    };
+    for (0..255) |i| {
+        @constCast(full_as_seq_path.segments[0].contents)[i] = @as(u16, @intCast(i));
+    }
+    defer full_as_seq_path.deinit();
+
+    try full_as_seq_path.prependASN(500);
+    try std.testing.expectEqual(@as(usize, 2), full_as_seq_path.segments.len);
+
+    try std.testing.expectEqual(ASPathSegmentType.AS_Sequence, full_as_seq_path.segments[0].segType);
+    try std.testing.expectEqual(@as(usize, 1), full_as_seq_path.segments[0].contents.len);
+    try std.testing.expectEqual(@as(u16, 500), full_as_seq_path.segments[0].contents[0]);
+
+    try std.testing.expectEqual(ASPathSegmentType.AS_Sequence, full_as_seq_path.segments[1].segType);
+    try std.testing.expectEqual(@as(usize, 255), full_as_seq_path.segments[1].contents.len);
+    for (full_as_seq_path.segments[1].contents, 0..) |as, i| {
+        try std.testing.expectEqual(@as(u16, @intCast(i)), as);
+    }
 }
