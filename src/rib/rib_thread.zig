@@ -305,7 +305,6 @@ pub const SyncTask = struct {
         entryIt = ctx.peerMap.iterator();
         while (entryIt.next()) |entry| {
             const peer = entry.value_ptr.*;
-            const peerAddress = entry.key_ptr;
 
             // Lock the session to grab the adjIn reference
             peer.session.mutex.lock();
@@ -320,6 +319,7 @@ pub const SyncTask = struct {
             adjOut.ribMutex.lock();
             defer adjOut.ribMutex.unlock();
 
+            const locatAddress = peer.sessionAddresses.localAddress;
             const sessionType = switch (peerType) {
                 .Internal => mainRibModule.SessionType.IBGP,
                 .External => mainRibModule.SessionType.EBGP,
@@ -365,7 +365,7 @@ pub const SyncTask = struct {
                 defer attrs.deinit();
 
                 if (peerType == .External or attrs.nexthop.value == .Self) {
-                    attrs.nexthop.value = .{ .Address = peerAddress.* };
+                    attrs.nexthop.value = .{ .Address = locatAddress };
                 }
                 if (peerType == .External) {
                     try attrs.asPath.value.prependASN(peer.localAsn);
