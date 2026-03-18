@@ -141,7 +141,7 @@ pub fn main() !void {
     {
         for (processConfig.networks) |network| {
             const route = try configParsing.parseNetworkToRoute(network);
-            try mainRib.setPath(route, .self, .{
+            try mainRib.setPath(route, .{ .self = .{ .localAsn = processConfig.localConfig.asn } }, .{
                 .allocator = gpa,
                 .origin = .init(.IGP),
                 .asPath = .init(try .initEmpty(gpa)),

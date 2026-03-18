@@ -2,3 +2,5 @@
 zig-out/
 
 **/__pycache__
+
+plan*.md

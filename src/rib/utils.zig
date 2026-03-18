@@ -9,11 +9,6 @@ pub fn convertAttributeListToUnifiedStruct(allocator: Allocator, peerType: sessi
     var attributes: ribModel.PathAttributes = .empty;
     attributes.allocator = allocator;
 
-    attributes.sessionType = switch (peerType) {
-        .External => .EBGP,
-        .Internal => .IBGP
-    };
-
     attributes.localPref = .{
         .flags = 0,
         .value = 100

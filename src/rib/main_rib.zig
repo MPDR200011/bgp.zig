@@ -10,12 +10,20 @@ const PathAttributes = model.PathAttributes;
 const ASNumber = model.ASNumber;
 const ASPath = model.ASPath;
 
+pub const SessionType = enum {
+    EBGP,
+    IBGP
+};
+
 pub const MainRibAdvertiser = union(enum) {
-    self,
+    self: struct {
+        localAsn: model.ASNumber,
+    },
     neighbor: struct {
         neighborIp: ip.IpAddress,
         peerId: u32,
-        peerAsn: u16,
+        localAsn: model.ASNumber,
+        sessionType: SessionType
     },
 
     pub fn equals(self: MainRibAdvertiser, other: MainRibAdvertiser) bool {
@@ -61,7 +69,6 @@ fn compareAddresses(a1: ip.IpAddress, a2: ip.IpAddress) i32 {
     return 0;
 }
 
-
 pub const MainRibPath = struct {
     const Self = @This();
 
@@ -81,24 +88,29 @@ pub const MainRibPath = struct {
 
     pub fn neighboringAS(self: *const Self) ASNumber {
         const asPath = &self.attrs.asPath.value;
-        switch (self.attrs.sessionType) {
-            .EBGP => {
-                std.debug.assert(asPath.segments.len > 0);
-                const firstSegment = asPath.segments[0];
-
-                std.debug.assert(firstSegment.segType == .AS_Sequence);
-                return firstSegment.contents[0];
+        switch (self.advertiser) {
+            .self => |originationInfo| {
+                return originationInfo.localAsn;
             },
-            .IBGP => {
-                if (asPath.segments.len == 0) {
-                    // FIXME need to return local as
-                    return 0;
-                } else {
-                    if (asPath.segments[0].segType == .AS_Set) {
-                        // FIXME need to return local as
-                        return 0;
-                    }
-                    return asPath.segments[0].contents[0];
+            .neighbor => |neighbor| {
+                switch (neighbor.sessionType) {
+                    .EBGP => {
+                        std.debug.assert(asPath.segments.len > 0);
+                        const firstSegment = asPath.segments[0];
+
+                        std.debug.assert(firstSegment.segType == .AS_Sequence);
+                        return firstSegment.contents[0];
+                    },
+                    .IBGP => {
+                        if (asPath.segments.len == 0) {
+                            return neighbor.localAsn;
+                        } else {
+                            if (asPath.segments[0].segType == .AS_Set) {
+                                return neighbor.localAsn;
+                            }
+                            return asPath.segments[0].contents[0];
+                        }
+                    },
                 }
             },
         }
@@ -108,7 +120,7 @@ pub const MainRibPath = struct {
         const med = self.attrs.multiExitDiscriminator orelse return 0;
         return med.value;
     }
-    
+
     /// > 0 => self is more prefered than other
     /// < 0 => self is less prefered than other
     /// = 0 => Tie
@@ -144,30 +156,16 @@ pub const MainRibPath = struct {
 
         // Compare MEDs if neighbouring AS is the same
         // FIXME should handle IBGP
-        if (self.attrs.sessionType == .EBGP and other.attrs.sessionType == .EBGP) {
-            if (self.neighboringAS() == other.neighboringAS()) {
-                const sMed = self.getMED();
-                const oMed = other.getMED();
-                if (sMed < oMed) {
-                    return 1;
-                } else if (sMed > oMed) {
-                    return -1;
-                }
-            }
-        }
-
-        // EBGP > IBGP
-        if (self.attrs.sessionType == .EBGP) {
-            if (other.attrs.sessionType == .IBGP) {
+        if (self.neighboringAS() == other.neighboringAS()) {
+            const sMed = self.getMED();
+            const oMed = other.getMED();
+            if (sMed < oMed) {
                 return 1;
-            }
-        } else {
-            if (other.attrs.sessionType == .EBGP) {
+            } else if (sMed > oMed) {
                 return -1;
             }
         }
 
-        // Lowest peer id -> Lowest peer address
         switch (self.advertiser) {
             .self => {
                 // There shouldn't be two originations of the same route
@@ -180,11 +178,25 @@ pub const MainRibPath = struct {
                         return -1;
                     },
                     .neighbor => |n2| {
+                        // EBGP > IBGP
+                        if (n1.sessionType == .EBGP) {
+                            if (n2.sessionType == .IBGP) {
+                                return 1;
+                            }
+                        } else {
+                            if (n2.sessionType == .EBGP) {
+                                return -1;
+                            }
+                        }
+
+                        // Lowest peer id wins
                         if (n1.peerId < n2.peerId) {
                             return 1;
                         } else if (n1.peerId > n2.peerId) {
                             return -1;
                         }
+
+                        // Lowest peer address wins
                         const diff = compareAddresses(n2.neighborIp, n1.neighborIp);
                         if (diff != 0) {
                             return diff;
@@ -356,13 +368,13 @@ test "Add Route" {
 
     const route: Route = .default;
 
-    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .peerAsn = 65001 } }, .{ .allocator = t.allocator, .sessionType = .EBGP, .origin = .init(.EGP), .asPath = .init(.createEmpty(t.allocator)), .nexthop = .init(.{ .Address = ip.IpV4Address.init(127, 0, 0, 1) }), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null });
+    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }, .{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(.createEmpty(t.allocator)), .nexthop = .init(.{ .Address = ip.IpV4Address.init(127, 0, 0, 1) }), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null });
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
     try testing.expectEqual(ribEntry.route, Route.default);
 
-    const routePath = ribEntry.paths.getPtr(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .peerAsn = 65001 } }) orelse return error.PathNotFound;
-    try testing.expect(routePath.advertiser.equals(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .peerAsn = 65001 } }));
+    const routePath = ribEntry.paths.getPtr(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }) orelse return error.PathNotFound;
+    try testing.expect(routePath.advertiser.equals(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }));
 
     const attrs: PathAttributes = routePath.attrs;
 
@@ -396,15 +408,15 @@ test "Set Route" {
     };
     defer asPath.deinit();
 
-    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .peerAsn = 65001 } }, .{ .allocator = t.allocator, .sessionType = .EBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(127, 0, 0, 1) }), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null });
-    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .peerAsn = 65002 } }, .{ .allocator = t.allocator, .sessionType = .EBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(127, 0, 0, 2) }), .localPref = .init(200), .atomicAggregate = .init(true), .multiExitDiscriminator = .init(69420), .aggregator = null });
-    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .peerAsn = 65001 } }, .{ .allocator = t.allocator, .sessionType = .EBGP, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(127, 0, 0, 1) }), .localPref = .init(142), .atomicAggregate = .init(true), .multiExitDiscriminator = null, .aggregator = null });
+    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }, .{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(127, 0, 0, 1) }), .localPref = .init(100), .atomicAggregate = .init(false), .multiExitDiscriminator = null, .aggregator = null });
+    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .localAsn = 65002, .sessionType = .EBGP } }, .{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(127, 0, 0, 2) }), .localPref = .init(200), .atomicAggregate = .init(true), .multiExitDiscriminator = .init(69420), .aggregator = null });
+    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }, .{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(asPath), .nexthop = .init(.{ .Address = ip.IpV4Address.init(127, 0, 0, 1) }), .localPref = .init(142), .atomicAggregate = .init(true), .multiExitDiscriminator = null, .aggregator = null });
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
     try testing.expectEqual(ribEntry.route, Route.default);
     {
-        const routePath = ribEntry.paths.getPtr(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .peerAsn = 65001 } }) orelse return error.PathNotFound;
-        try testing.expect(routePath.advertiser.equals(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .peerAsn = 65001 } }));
+        const routePath = ribEntry.paths.getPtr(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }) orelse return error.PathNotFound;
+        try testing.expect(routePath.advertiser.equals(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }));
 
         const attrs: PathAttributes = routePath.attrs;
 
@@ -420,8 +432,8 @@ test "Set Route" {
     }
 
     {
-        const routePath = ribEntry.paths.getPtr(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .peerAsn = 65002 } }) orelse return error.PathNotFound;
-        try testing.expect(routePath.advertiser.equals(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .peerAsn = 65002 } }));
+        const routePath = ribEntry.paths.getPtr(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .localAsn = 65002, .sessionType = .EBGP } }) orelse return error.PathNotFound;
+        try testing.expect(routePath.advertiser.equals(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .localAsn = 65002, .sessionType = .EBGP } }));
 
         const attrs: PathAttributes = routePath.attrs;
 
@@ -443,20 +455,20 @@ test "Remove Path" {
 
     const route: Route = .default;
 
-    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .peerAsn = 65001 } }, .{ .allocator = t.allocator, .sessionType = .EBGP, .origin = .init(.EGP), .asPath = .init(.createEmpty(t.allocator)), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null });
-    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .peerAsn = 65002 } }, .{ .allocator = t.allocator, .sessionType = .EBGP, .origin = .init(.EGP), .asPath = .init(.createEmpty(t.allocator)), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null });
+    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }, .{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(.createEmpty(t.allocator)), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null });
+    try rib.setPath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .localAsn = 65002, .sessionType = .EBGP } }, .{ .allocator = t.allocator, .origin = .init(.EGP), .asPath = .init(.createEmpty(t.allocator)), .nexthop = .init(.{ .Address = ip.IpV4Address.init(0, 0, 0, 0) }), .localPref = .init(100), .atomicAggregate = null, .multiExitDiscriminator = null, .aggregator = null });
 
-    try testing.expectEqual(false, rib.removePath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .peerAsn = 65001 } }));
+    try testing.expectEqual(false, rib.removePath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 1) }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }));
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.ExpectedNonNull;
 
     try testing.expectEqual(1, ribEntry.paths.count());
 
-    const path = ribEntry.paths.getPtr(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .peerAsn = 65002 } }) orelse return error.ExpectedNonNull;
+    const path = ribEntry.paths.getPtr(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .localAsn = 65002, .sessionType = .EBGP } }) orelse return error.ExpectedNonNull;
 
-    try testing.expect(path.advertiser.equals(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .peerAsn = 65002 } }));
+    try testing.expect(path.advertiser.equals(.{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .localAsn = 65002, .sessionType = .EBGP } }));
 
-    try testing.expectEqual(true, rib.removePath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .peerAsn = 65002 } }));
+    try testing.expectEqual(true, rib.removePath(route, .{ .neighbor = .{ .neighborIp = .{ .V4 = .init(127, 0, 0, 2) }, .peerId = 2, .localAsn = 65002, .sessionType = .EBGP } }));
 
     try testing.expectEqual(null, rib.prefixes.getPtr(route));
 }
@@ -468,7 +480,6 @@ test "Self Advertiser" {
     const route: Route = .default;
     const attrs = model.PathAttributes{
         .allocator = testing.allocator,
-        .sessionType = .IBGP,
         .origin = .init(.IGP),
         .asPath = .init(.createEmpty(testing.allocator)),
         .nexthop = .init(.{ .Address = ip.IpV4Address.init(127, 0, 0, 1) }),
@@ -478,25 +489,24 @@ test "Self Advertiser" {
         .aggregator = null,
     };
 
-    try rib.setPath(route, .self, attrs);
+    try rib.setPath(route, .{ .self = .{ .localAsn = 65001 } }, attrs);
 
     const ribEntry = rib.prefixes.getPtr(route) orelse return error.RouteNotPresent;
-    const routePath = ribEntry.paths.getPtr(.self) orelse return error.PathNotFound;
+    const routePath = ribEntry.paths.getPtr(.{ .self = .{ .localAsn = 65001 } }) orelse return error.PathNotFound;
 
     try testing.expect(routePath.advertiser == .self);
     try testing.expectEqual(model.Origin.IGP, routePath.attrs.origin.value);
 
-    try testing.expectEqual(true, rib.removePath(route, .self));
+    try testing.expectEqual(true, rib.removePath(route, .{ .self = .{ .localAsn = 65001 } }));
 }
 
 test "MainRibPath.cmp local preference" {
     const allocator = testing.allocator;
 
     const path1 = MainRibPath{
-        .advertiser = .self,
+        .advertiser = .{ .self = .{ .localAsn = 65001 } },
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -509,10 +519,9 @@ test "MainRibPath.cmp local preference" {
     defer path1.attrs.asPath.value.deinit();
 
     const path2 = MainRibPath{
-        .advertiser = .self,
+        .advertiser = .{ .self = .{ .localAsn = 65001 } },
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -542,13 +551,12 @@ test "MainRibPath.cmp AS path length" {
     };
     defer as_path_long.deinit();
 
-    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .peerAsn = 65001 } };
+    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .localAsn = 65001, .sessionType = .IBGP } };
 
     const path_long = MainRibPath{
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(as_path_long),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -563,7 +571,6 @@ test "MainRibPath.cmp AS path length" {
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -582,13 +589,12 @@ test "MainRibPath.cmp AS path length" {
 test "MainRibPath.cmp origin preference" {
     const allocator = testing.allocator;
 
-    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .peerAsn = 65001 } };
+    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .localAsn = 65001, .sessionType = .IBGP } };
 
     const path_igp = MainRibPath{
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -604,7 +610,6 @@ test "MainRibPath.cmp origin preference" {
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.EGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -620,7 +625,6 @@ test "MainRibPath.cmp origin preference" {
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.INCOMPLETE),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -640,13 +644,12 @@ test "MainRibPath.cmp origin preference" {
 test "MainRibPath.cmp tie" {
     const allocator = testing.allocator;
 
-    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .peerAsn = 65001 } };
+    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .localAsn = 65001, .sessionType = .IBGP } };
 
     const path1 = MainRibPath{
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -662,7 +665,6 @@ test "MainRibPath.cmp tie" {
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -680,7 +682,7 @@ test "MainRibPath.cmp tie" {
 test "MainRibPath.cmp MED" {
     const allocator = testing.allocator;
 
-    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .peerAsn = 65001 } };
+    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } };
 
     var asPath = ASPath.createEmpty(allocator);
     defer asPath.deinit();
@@ -690,7 +692,6 @@ test "MainRibPath.cmp MED" {
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .EBGP,
             .origin = .init(.IGP),
             .asPath = .init(try asPath.clone(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -706,7 +707,6 @@ test "MainRibPath.cmp MED" {
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .EBGP,
             .origin = .init(.IGP),
             .asPath = .init(try asPath.clone(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -722,7 +722,6 @@ test "MainRibPath.cmp MED" {
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .EBGP,
             .origin = .init(.IGP),
             .asPath = .init(try asPath.clone(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -744,15 +743,19 @@ test "MainRibPath.cmp MED" {
 test "MainRibPath.cmp EBGP vs IBGP" {
     const allocator = testing.allocator;
 
-    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .peerAsn = 65001 } };
+    const n1_ebgp = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } };
+    const n1_ibgp = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .localAsn = 65001, .sessionType = .IBGP } };
+
+    var asPath = ASPath.createEmpty(allocator);
+    try asPath.prependASN(65002);
+    defer asPath.deinit();
 
     const ebgp_path = MainRibPath{
-        .advertiser = n1,
+        .advertiser = n1_ebgp,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .EBGP,
             .origin = .init(.IGP),
-            .asPath = .init(ASPath.createEmpty(allocator)),
+            .asPath = .init(try asPath.clone(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
             .localPref = .init(100),
             .atomicAggregate = .init(false),
@@ -763,12 +766,11 @@ test "MainRibPath.cmp EBGP vs IBGP" {
     defer ebgp_path.attrs.asPath.value.deinit();
 
     const ibgp_path = MainRibPath{
-        .advertiser = n1,
+        .advertiser = n1_ibgp,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
-            .asPath = .init(ASPath.createEmpty(allocator)),
+            .asPath = .init(try asPath.clone(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
             .localPref = .init(100),
             .atomicAggregate = .init(false),
@@ -785,14 +787,13 @@ test "MainRibPath.cmp EBGP vs IBGP" {
 test "MainRibPath.cmp advertiser tie-break" {
     const allocator = testing.allocator;
 
-    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .peerAsn = 65001 } };
-    const n2 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.2") catch unreachable }, .peerId = 2, .peerAsn = 65002 } };
+    const n1 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.1") catch unreachable }, .peerId = 1, .localAsn = 65001, .sessionType = .IBGP } };
+    const n2 = MainRibAdvertiser{ .neighbor = .{ .neighborIp = ip.IpAddress{ .V4 = ip.IpV4Address.parse("10.0.0.2") catch unreachable }, .peerId = 2, .localAsn = 65002, .sessionType = .IBGP } };
 
     const path_self = MainRibPath{
-        .advertiser = .self,
+        .advertiser = .{ .self = .{ .localAsn = 65001 } },
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -808,7 +809,6 @@ test "MainRibPath.cmp advertiser tie-break" {
         .advertiser = n1,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
@@ -824,7 +824,6 @@ test "MainRibPath.cmp advertiser tie-break" {
         .advertiser = n2,
         .attrs = PathAttributes{
             .allocator = allocator,
-            .sessionType = .IBGP,
             .origin = .init(.IGP),
             .asPath = .init(ASPath.createEmpty(allocator)),
             .nexthop = .init(.{ .Address = ip.IpV4Address.parse("1.1.1.1") catch unreachable }),
