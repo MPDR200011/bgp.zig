@@ -10,7 +10,32 @@ const PathAttributes = model.PathAttributes;
 const ASNumber = model.ASNumber;
 const ASPath = model.ASPath;
 
+pub const MainRibAdvertiser = union(enum) {
+    self,
+    neighbor: struct {
+        neighborIp: ip.IpAddress,
+        peerId: u32,
+        peerAsn: u16,
+    },
+
+    pub fn equals(self: MainRibAdvertiser, other: MainRibAdvertiser) bool {
+        switch (self) {
+            .self => return other == .self,
+            .neighbor => |n1| switch (other) {
+                .self => return false,
+                .neighbor => |n2| return n1.neighborIp.equals(n2.neighborIp),
+            },
+        }
+    }
+};
+
+/// Lexicographical comparison of addresses
+/// > 0 => a1 > a2
+/// < 0 => a1 < a2
+/// = 0 => Tie
 fn compareAddresses(a1: ip.IpAddress, a2: ip.IpAddress) i32 {
+    // The AFIs should never be different, the program should never reach a
+    // point where this happens.
     std.debug.assert(std.meta.activeTag(a1) == std.meta.activeTag(a2));
 
     switch (a1) {
@@ -36,52 +61,6 @@ fn compareAddresses(a1: ip.IpAddress, a2: ip.IpAddress) i32 {
     return 0;
 }
 
-pub const MainRibAdvertiser = union(enum) {
-    self,
-    neighbor: struct {
-        neighborIp: ip.IpAddress,
-        peerId: u32,
-        peerAsn: u16,
-    },
-
-    pub fn equals(self: MainRibAdvertiser, other: MainRibAdvertiser) bool {
-        switch (self) {
-            .self => return other == .self,
-            .neighbor => |n1| switch (other) {
-                .self => return false,
-                .neighbor => |n2| return n1.neighborIp.equals(n2.neighborIp),
-            },
-        }
-    }
-};
-
-const MainRibAdvertiserMapCtx = struct {
-    const Self = @This();
-
-    pub fn hash(_: Self, r: MainRibAdvertiser) u64 {
-        switch (r) {
-            .self => {
-                return 0;
-            },
-            .neighbor => |neighbor| {
-                switch (neighbor.neighborIp) {
-                    .V4 => |v4| {
-                        const hashFn = std.hash_map.getAutoHashFn(ip.IpV4Address, void);
-                        return hashFn({}, v4);
-                    },
-                    .V6 => |v6| {
-                        const hashFn = std.hash_map.getAutoHashFn(ip.IpV6Address, void);
-                        return hashFn({}, v6);
-                    },
-                }
-            },
-        }
-    }
-
-    pub fn eql(_: Self, r1: MainRibAdvertiser, r2: MainRibAdvertiser) bool {
-        return r1.equals(r2);
-    }
-};
 
 pub const MainRibPath = struct {
     const Self = @This();
@@ -112,9 +91,11 @@ pub const MainRibPath = struct {
             },
             .IBGP => {
                 if (asPath.segments.len == 0) {
+                    // FIXME need to return local as
                     return 0;
                 } else {
                     if (asPath.segments[0].segType == .AS_Set) {
+                        // FIXME need to return local as
                         return 0;
                     }
                     return asPath.segments[0].contents[0];
@@ -127,32 +108,55 @@ pub const MainRibPath = struct {
         const med = self.attrs.multiExitDiscriminator orelse return 0;
         return med.value;
     }
-
+    
+    /// > 0 => self is more prefered than other
+    /// < 0 => self is less prefered than other
+    /// = 0 => Tie
     pub fn cmp(self: *const Self, other: *const Self) i32 {
-        const lPrefComp = @as(i32, @intCast(self.attrs.localPref.value)) - @as(i32, @intCast(other.attrs.localPref.value));
-        if (lPrefComp != 0) {
-            return lPrefComp;
+        // LPREF
+        {
+            const sLPref = self.attrs.localPref.value;
+            const oLPref = other.attrs.localPref.value;
+
+            if (sLPref > oLPref) {
+                return 1;
+            } else if (sLPref < oLPref) {
+                return -1;
+            }
         }
 
-        const asPathComp: i32 = @as(i32, @intCast(other.attrs.asPath.value.len())) - @as(i32, @intCast(self.attrs.asPath.value.len()));
-        if (asPathComp != 0) {
-            return asPathComp;
+        {
+            // AS Path
+            const sLPathLen = self.attrs.asPath.value.len();
+            const oLPathLen = other.attrs.asPath.value.len();
+            if (sLPathLen < oLPathLen) {
+                return 1;
+            } else if (sLPathLen > oLPathLen) {
+                return -1;
+            }
         }
 
+        // ORIGIN
         const originComp = @intFromEnum(other.attrs.origin.value) - @intFromEnum(self.attrs.origin.value);
         if (originComp != 0) {
             return originComp;
         }
 
+        // Compare MEDs if neighbouring AS is the same
+        // FIXME should handle IBGP
         if (self.attrs.sessionType == .EBGP and other.attrs.sessionType == .EBGP) {
             if (self.neighboringAS() == other.neighboringAS()) {
-                const diff = @as(i64, @intCast(other.getMED())) - @as(i64, @intCast(self.getMED()));
-                if (diff != 0) {
-                    return @intCast(diff);
+                const sMed = self.getMED();
+                const oMed = other.getMED();
+                if (sMed < oMed) {
+                    return 1;
+                } else if (sMed > oMed) {
+                    return -1;
                 }
             }
         }
 
+        // EBGP > IBGP
         if (self.attrs.sessionType == .EBGP) {
             if (other.attrs.sessionType == .IBGP) {
                 return 1;
@@ -163,8 +167,10 @@ pub const MainRibPath = struct {
             }
         }
 
+        // Lowest peer id -> Lowest peer address
         switch (self.advertiser) {
             .self => {
+                // There shouldn't be two originations of the same route
                 std.debug.assert(std.meta.activeTag(other.advertiser) != .self);
                 return 1;
             },
@@ -174,8 +180,10 @@ pub const MainRibPath = struct {
                         return -1;
                     },
                     .neighbor => |n2| {
-                        if (n1.peerId != n2.peerId) {
-                            return @as(i32, @intCast(n2.peerId)) - @as(i32, @intCast(n1.peerId));
+                        if (n1.peerId < n2.peerId) {
+                            return 1;
+                        } else if (n1.peerId > n2.peerId) {
+                            return -1;
                         }
                         const diff = compareAddresses(n2.neighborIp, n1.neighborIp);
                         if (diff != 0) {
@@ -186,20 +194,36 @@ pub const MainRibPath = struct {
             },
         }
 
+        // TODO: some vendor implementations tie break based on path age, should look into that
         return 0;
     }
 };
 
-const RouteMapCtx = struct {
+const MainRibAdvertiserMapCtx = struct {
     const Self = @This();
 
-    pub fn hash(_: Self, r: Route) u64 {
-        const hashFn = std.hash_map.getAutoHashFn(Route, void);
-        return hashFn({}, r);
+    pub fn hash(_: Self, r: MainRibAdvertiser) u64 {
+        switch (r) {
+            .self => {
+                return 0;
+            },
+            .neighbor => |neighbor| {
+                switch (neighbor.neighborIp) {
+                    .V4 => |v4| {
+                        const hashFn = std.hash_map.getAutoHashFn(ip.IpV4Address, void);
+                        return hashFn({}, v4);
+                    },
+                    .V6 => |v6| {
+                        const hashFn = std.hash_map.getAutoHashFn(ip.IpV6Address, void);
+                        return hashFn({}, v6);
+                    },
+                }
+            },
+        }
     }
 
-    pub fn eql(_: Self, r1: Route, r2: Route) bool {
-        return (r1.prefixLength == r2.prefixLength) and (std.mem.eql(u8, &r1.prefixData, &r2.prefixData));
+    pub fn eql(_: Self, r1: MainRibAdvertiser, r2: MainRibAdvertiser) bool {
+        return r1.equals(r2);
     }
 };
 
@@ -258,6 +282,19 @@ const RibEntry = struct {
         path.deinit();
 
         _ = self.paths.remove(advertiser);
+    }
+};
+
+const RouteMapCtx = struct {
+    const Self = @This();
+
+    pub fn hash(_: Self, r: Route) u64 {
+        const hashFn = std.hash_map.getAutoHashFn(Route, void);
+        return hashFn({}, r);
+    }
+
+    pub fn eql(_: Self, r1: Route, r2: Route) bool {
+        return (r1.prefixLength == r2.prefixLength) and (std.mem.eql(u8, &r1.prefixData, &r2.prefixData));
     }
 };
 
