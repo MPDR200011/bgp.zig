@@ -331,17 +331,10 @@ pub const MultiExitDiscriminatorAttr = Attribute(u32);
 pub const AggregatorAttr = Attribute(Aggregator);
 pub const UnknownAttr = Attribute(Unknown);
 
-pub const SessionType = enum {
-    EBGP,
-    IBGP
-};
-
 pub const PathAttributes = struct {
     const Self = @This();
 
     allocator: Allocator,
-
-    sessionType: SessionType = .EBGP,
 
     // Well known, Mandatory
     origin: OriginAttr,
@@ -387,7 +380,6 @@ pub const PathAttributes = struct {
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
         var copy = Self{
             .allocator = allocator,
-            .sessionType = self.sessionType,
             .origin = self.origin,
             .asPath = self.asPath,
             .nexthop = self.nexthop,

@@ -141,7 +141,7 @@ pub fn main() !void {
     {
         for (processConfig.networks) |network| {
             const route = try configParsing.parseNetworkToRoute(network);
-            try mainRib.setPath(route, .self, .{
+            try mainRib.setPath(route, .{ .self = .{ .localAsn = processConfig.localConfig.asn } }, .{
                 .allocator = gpa,
                 .origin = .init(.IGP),
                 .asPath = .init(try .initEmpty(gpa)),
@@ -153,7 +153,6 @@ pub fn main() !void {
             });
         }
     }
-
 
     std.log.info("Initializing peer map", .{});
 
@@ -276,7 +275,6 @@ test {
     _ = @import("rib/main_rib.zig");
     _ = @import("rib/adj_rib.zig");
     _ = @import("rib/rib_thread.zig");
-    _ = @import("rib/common.zig");
     _ = @import("rib/model.zig");
     _ = @import("rib/utils.zig");
 }

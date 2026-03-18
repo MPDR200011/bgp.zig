@@ -5,18 +5,15 @@ const xev = @import("xev");
 const rib = @import("main_rib.zig");
 const debounced = @import("../utils/debounced.zig");
 const model = @import("../rib/model.zig");
-const common = @import("common.zig");
 
 const DoublyLinkedList = std.DoublyLinkedList;
 const Allocator = std.mem.Allocator;
 
 const Rib = rib.Rib;
-const Advertiser = common.Advertiser;
+const MainRibAdvertiser = rib.MainRibAdvertiser;
 
 const Route = model.Route;
 const PathAttributes = model.PathAttributes;
-
-const TaskCounter = common.TaskCounter;
 
 pub const Operation = union(enum) {
     const Self = @This();
@@ -74,14 +71,14 @@ pub const RibManager = struct {
         self.rib.deinit();
     }
 
-    pub fn setPath(self: *Self, route: Route, advertiserAddress: Advertiser, attrs: PathAttributes) !void {
+    pub fn setPath(self: *Self, route: Route, advertiserAddress: MainRibAdvertiser, attrs: PathAttributes) !void {
         self.ribMutex.lock();
         defer self.ribMutex.unlock();
 
         try self.rib.setPath(route, advertiserAddress, attrs);
     }
 
-    pub fn removePath(self: *Self, route: Route, advertiserAddress: Advertiser) !bool {
+    pub fn removePath(self: *Self, route: Route, advertiserAddress: MainRibAdvertiser) !bool {
         self.ribMutex.lock();
         defer self.ribMutex.unlock();
 

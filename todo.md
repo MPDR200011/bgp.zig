@@ -1,15 +1,7 @@
 ## TODOs
 
-- Add context to RoutePath:
-  - Assigned when route is introduced into main rib
-  - Adj rib managers hold the context, which is assigned at creation when the
-  session switches to ESTABLISHED
-  - Should hold:
-    - Session addresses
-    - Session ASNs
-    - Session peer ids
-  - IMPORTANT: complete the RoutePath.neighboringAS() and cmp() methods by
-  using that information.
+- Validation: for EBGP sessions, AS Path shouldn't be empty
+- Turn Path.cmp() into standalone function
 - Verify support for empty AS Path from and to internal peers
 - Periodic task that restarts peer sessions
 - MinRouteAdvertisementIntervalTimer
