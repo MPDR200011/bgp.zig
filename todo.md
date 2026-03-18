@@ -1,6 +1,7 @@
 ## TODOs
 
 - Validation: for EBGP sessions, AS Path shouldn't be empty
+- Turn Path.cmp() into standalone function
 - Verify support for empty AS Path from and to internal peers
 - Periodic task that restarts peer sessions
 - MinRouteAdvertisementIntervalTimer
