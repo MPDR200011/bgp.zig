@@ -701,7 +701,7 @@ test "filterSplitHorizon" {
         filtered_ibgp.deinit(alloc);
     }
 
-    // Same result - filtering is by IP only
+    // Route 2 is exluded because it's from an IBGP peer
     try t.expectEqual(@as(usize, 2), filtered_ibgp.items.len);
     try t.expect(filtered_ibgp.items[0].@"0".prefixLength == route1.prefixLength);
     try t.expect(std.mem.eql(u8, &filtered_ibgp.items[0].@"0".prefixData, &route1.prefixData));
