@@ -27,7 +27,7 @@ const RouteUpdate = std.meta.Tuple(&.{ model.Route, MainRibPath });
 const RouteList = std.ArrayList(model.Route);
 const UpdatesList = std.ArrayList(RouteUpdate);
 
-fn filterSplitHorizon(alloc: Allocator, neighbor: ip.IpAddress, updates: UpdatesList) !UpdatesList {
+fn filterSplitHorizon(alloc: Allocator, neighborAddress: ip.IpAddress, neighborSessionType: mainRibModule.SessionType, updates: UpdatesList) !UpdatesList {
     var filtered = UpdatesList{};
     errdefer {
         for (filtered.items) |*update| {
@@ -42,7 +42,10 @@ fn filterSplitHorizon(alloc: Allocator, neighbor: ip.IpAddress, updates: Updates
         switch (updateAdvertiser) {
             .self => {},
             .neighbor => |n| {
-                if (n.neighborIp.equals(neighbor)) {
+                if (n.neighborIp.equals(neighborAddress)) {
+                    shouldInclude = false;
+                }
+                if (n.sessionType == .IBGP and neighborSessionType == .IBGP) {
                     shouldInclude = false;
                 }
             },
@@ -317,15 +320,21 @@ pub const SyncTask = struct {
             adjOut.ribMutex.lock();
             defer adjOut.ribMutex.unlock();
 
+            const sessionType = switch (peerType) {
+                .Internal => mainRibModule.SessionType.IBGP,
+                .External => mainRibModule.SessionType.EBGP,
+            };
+
             // Once we grab the adjOut and lock it we can unlock the session
             // While the adjOut is locked the session can't terminate
             peer.session.mutex.unlock();
+
 
             var result = try syncFromMainToAdjOut(ctx.allocator, adjOut, ctx.mainRib);
             defer result.deinit(ctx.allocator);
 
             // Split Horizon: filter out routes that were advertised by this peer
-            var filteredUpdates = try filterSplitHorizon(ctx.allocator, adjOut.neighbor, result.updatedRoutes);
+            var filteredUpdates = try filterSplitHorizon(ctx.allocator, adjOut.neighbor, sessionType, result.updatedRoutes);
             defer {
                 for (filteredUpdates.items) |*update| {
                     update.@"1".deinit();
@@ -634,6 +643,7 @@ test "aggregateRouteUpdates grouping" {
 test "filterSplitHorizon" {
     const alloc = t.allocator;
     const neighbor_ip = try ip.IpAddress.parse("192.168.1.1");
+    const neighbor_ip2 = try ip.IpAddress.parse("192.168.1.2");
 
     const asPath = model.ASPath.createEmpty(alloc);
     defer asPath.deinit();
@@ -656,27 +666,48 @@ test "filterSplitHorizon" {
 
     const route1 = model.Route{ .prefixData = [4]u8{ 10, 0, 1, 0 }, .prefixLength = 24 };
     const route2 = model.Route{ .prefixData = [4]u8{ 10, 0, 2, 0 }, .prefixLength = 24 };
+    const route3 = model.Route{ .prefixData = [4]u8{ 10, 0, 3, 0 }, .prefixLength = 24 };
 
     // Route 1 from self
     try updates.append(alloc, .{ route1, .{ .advertiser = .{ .self = .{ .localAsn = 65001 } }, .attrs = try attrs.clone(alloc) } });
     // Route 2 from neighbor
     try updates.append(alloc, .{ route2, .{ .advertiser = .{ .neighbor = .{ .neighborIp = neighbor_ip, .peerId = 1, .localAsn = 65001, .sessionType = .IBGP } }, .attrs = try attrs.clone(alloc) } });
+    // Route 3 from neighbor
+    try updates.append(alloc, .{ route3, .{ .advertiser = .{ .neighbor = .{ .neighborIp = neighbor_ip, .peerId = 1, .localAsn = 65001, .sessionType = .EBGP } }, .attrs = try attrs.clone(alloc) } });
 
-    try t.expectEqual(@as(usize, 2), updates.items.len);
+    try t.expectEqual(@as(usize, 3), updates.items.len);
 
-    var filtered = try filterSplitHorizon(alloc, neighbor_ip, updates);
+    // Filter with neighbor_ip, EBGP
+    var filtered_ebgp = try filterSplitHorizon(alloc, neighbor_ip, .EBGP, updates);
     defer {
-        for (filtered.items) |*update| {
+        for (filtered_ebgp.items) |*update| {
             update.@"1".deinit();
         }
-        filtered.deinit(alloc);
+        filtered_ebgp.deinit(alloc);
     }
 
-    // Route 2 should be filtered out because it came from the same neighbor
-    try t.expectEqual(@as(usize, 1), filtered.items.len);
-    try t.expect(filtered.items[0].@"0".prefixLength == route1.prefixLength);
-    try t.expect(std.mem.eql(u8, &filtered.items[0].@"0".prefixData, &route1.prefixData));
+    // Route 1 should still be included (it's from self), route 2 and 3 are
+    // filtered to avoid sending back to peer 
+    try t.expectEqual(@as(usize, 1), filtered_ebgp.items.len);
+    try t.expectEqual(.self, std.meta.activeTag(filtered_ebgp.items[0].@"1".advertiser));
+    try t.expect(std.mem.eql(u8, &filtered_ebgp.items[0].@"0".prefixData, &route1.prefixData));
+
+    // Filter again - new different neighbor, IBGP
+    var filtered_ibgp = try filterSplitHorizon(alloc, neighbor_ip2, .IBGP, updates);
+    defer {
+        for (filtered_ibgp.items) |*update| {
+            update.@"1".deinit();
+        }
+        filtered_ibgp.deinit(alloc);
+    }
+
+    // Same result - filtering is by IP only
+    try t.expectEqual(@as(usize, 2), filtered_ibgp.items.len);
+    try t.expect(filtered_ibgp.items[0].@"0".prefixLength == route1.prefixLength);
+    try t.expect(std.mem.eql(u8, &filtered_ibgp.items[0].@"0".prefixData, &route1.prefixData));
+    try t.expect(filtered_ibgp.items[1].@"0".prefixLength == route3.prefixLength);
+    try t.expect(std.mem.eql(u8, &filtered_ibgp.items[1].@"0".prefixData, &route3.prefixData));
 
     // Original list should still have 2 items
-    try t.expectEqual(@as(usize, 2), updates.items.len);
+    try t.expectEqual(@as(usize, 3), updates.items.len);
 }
